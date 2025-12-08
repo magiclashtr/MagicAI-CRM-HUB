@@ -1,0 +1,8 @@
+{
+  "name": "MagicAI-CRM-HUB",
+  "description": "An AI-powered CRM for Magic Lash Academy, managing training, finances, and tasks with generative AI assistance.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
