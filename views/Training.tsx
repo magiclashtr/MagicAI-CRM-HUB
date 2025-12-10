@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Student, Course, Employee, Currency, PaymentHistory, Note, EnrolledCourse, StudentSource, CourseTemplate } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { geminiService } from '../services/geminiService';
+import { auth } from '../services/firebase';
+import { authService } from '../services/authService';
 import { formatCurrency, PAYMENT_METHODS } from '../constants';
 import Button from '../components/Button';
 
@@ -26,227 +28,227 @@ const EditIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="n
 
 // Add/Edit Student Modal
 const AddEditStudentModal: React.FC<{
-  student: Student | null;
-  courses: Course[];
-  onClose: () => void;
-  onSave: (studentData: Student | Omit<Student, 'id'>) => Promise<void>;
-  currency: Currency;
+    student: Student | null;
+    courses: Course[];
+    onClose: () => void;
+    onSave: (studentData: Student | Omit<Student, 'id'>) => Promise<void>;
+    currency: Currency;
 }> = ({ student, courses, onClose, onSave, currency }) => {
-  const [formData, setFormData] = useState<any>(() => {
-    const defaultData = {
-      name: '', email: '', phone: '', messenger: '', source: '',
-      registrationDate: new Date().toISOString().split('T')[0],
-      managerUid: 'margarita-g-id', // Default manager
-      status: 'Pending',
-      notes: [],
-      enrolledCourses: [],
-      avatar: '',
-    };
-    const studentData = student ? { ...student } : defaultData;
-    // FIX: Create a new object for the form state, combining student data with the UI-specific 'selectedCourseIds' property to resolve the type error.
-    return {
-      ...studentData,
-      avatar: student?.avatar || '',
-      selectedCourseIds: student?.enrolledCourses.map(c => c.courseId) || [],
-    };
-  });
-  const [sources, setSources] = useState<StudentSource[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState(student?.avatar || '');
-
-  useEffect(() => {
-    firestoreService.getStudentSources().then(setSources);
-  }, []);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    if (imageFile) {
-        objectUrl = URL.createObjectURL(imageFile);
-        setPreviewUrl(objectUrl);
-    }
-    return () => {
-        if (objectUrl) {
-            URL.revokeObjectURL(objectUrl);
-        }
-    };
-  }, [imageFile]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev: any) => ({ ...prev, [name]: value }));
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
-            alert("File is too large. Please select an image smaller than 5MB.");
-            return;
-        }
-        setImageFile(file);
-    }
-  };
-
-  const handleRemoveImage = () => {
-      setImageFile(null);
-      setPreviewUrl('');
-      setFormData((prev: any) => ({ ...prev, avatar: '' }));
-      if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleCourseChange = (courseId: string) => {
-    setFormData((prev: any) => {
-      const selectedCourseIds = prev.selectedCourseIds.includes(courseId)
-        ? prev.selectedCourseIds.filter((id: string) => id !== courseId)
-        : [...prev.selectedCourseIds, courseId];
-      return { ...prev, selectedCourseIds };
+    const [formData, setFormData] = useState<any>(() => {
+        const defaultData = {
+            name: '', email: '', phone: '', messenger: '', source: '',
+            registrationDate: new Date().toISOString().split('T')[0],
+            managerUid: 'margarita-g-id', // Default manager
+            status: 'Pending',
+            notes: [],
+            enrolledCourses: [],
+            avatar: '',
+        };
+        const studentData = student ? { ...student } : defaultData;
+        // FIX: Create a new object for the form state, combining student data with the UI-specific 'selectedCourseIds' property to resolve the type error.
+        return {
+            ...studentData,
+            avatar: student?.avatar || '',
+            selectedCourseIds: student?.enrolledCourses.map(c => c.courseId) || [],
+        };
     });
-  };
+    const [sources, setSources] = useState<StudentSource[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState(student?.avatar || '');
 
-  const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { value } = e.target;
-    if (value === '--add-new--') {
-      const newSourceName = window.prompt("Enter new source name:");
-      if (newSourceName) {
-        try {
-          const newSourceRef = await firestoreService.addStudentSource({ name: newSourceName });
-          const newSource = { id: newSourceRef.id, name: newSourceName };
-          setSources(prev => [...prev, newSource]);
-          setFormData((prev: any) => ({ ...prev, source: newSourceName }));
-        } catch (error) {
-          console.error("Error adding new source:", error);
+    useEffect(() => {
+        firestoreService.getStudentSources().then(setSources);
+    }, []);
+
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (imageFile) {
+            objectUrl = URL.createObjectURL(imageFile);
+            setPreviewUrl(objectUrl);
         }
-      }
-    } else {
-      handleChange(e);
-    }
-  };
+        return () => {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+    }, [imageFile]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let finalStudentData = { ...formData };
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev: any) => ({ ...prev, [name]: value }));
+    };
 
-    if (imageFile) {
-        try {
-            const studentId = student?.id || `new_student_${Date.now()}`;
-            const imagePath = `avatars/students/${studentId}_${imageFile.name}`;
-            const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
-            finalStudentData.avatar = downloadURL;
-        } catch (error) {
-            console.error("Image upload failed:", error);
-            alert("Could not upload the avatar. Please try again.");
-            return;
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                alert("File is too large. Please select an image smaller than 5MB.");
+                return;
+            }
+            setImageFile(file);
         }
-    }
+    };
 
-    const { selectedCourseIds, ...studentData } = finalStudentData;
-    const currentCourseIds = student?.enrolledCourses.map(c => c.courseId) || [];
-    const coursesToAddIds = selectedCourseIds.filter((id: string) => !currentCourseIds.includes(id));
-    
-    const newEnrolledCourses: EnrolledCourse[] = coursesToAddIds.map((courseId: string) => {
-      const course = courses.find(c => c.id === courseId);
-      if (!course) throw new Error("Course not found during enrollment");
-      return {
-        courseId: course.id,
-        courseName: course.name,
-        startDate: course.startDate,
-        price: course.price,
-        pricePaid: 0,
-        priceDue: course.price,
-        paymentStatus: 'Pending',
-        progress: 0,
-        paymentHistory: [],
-      };
-    });
-    
-    studentData.enrolledCourses = [...(student?.enrolledCourses || []), ...newEnrolledCourses];
-    await onSave(studentData);
-  };
+    const handleRemoveImage = () => {
+        setImageFile(null);
+        setPreviewUrl('');
+        setFormData((prev: any) => ({ ...prev, avatar: '' }));
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
 
-  const fourteenDaysAgo = new Date();
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    const handleCourseChange = (courseId: string) => {
+        setFormData((prev: any) => {
+            const selectedCourseIds = prev.selectedCourseIds.includes(courseId)
+                ? prev.selectedCourseIds.filter((id: string) => id !== courseId)
+                : [...prev.selectedCourseIds, courseId];
+            return { ...prev, selectedCourseIds };
+        });
+    };
 
-  const availableCourses = courses.filter(course => new Date(course.startDate) >= fourteenDaysAgo);
+    const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const { value } = e.target;
+        if (value === '--add-new--') {
+            const newSourceName = window.prompt("Enter new source name:");
+            if (newSourceName) {
+                try {
+                    const newSourceRef = await firestoreService.addStudentSource({ name: newSourceName });
+                    const newSource = { id: newSourceRef.id, name: newSourceName };
+                    setSources(prev => [...prev, newSource]);
+                    setFormData((prev: any) => ({ ...prev, source: newSourceName }));
+                } catch (error) {
+                    console.error("Error adding new source:", error);
+                }
+            }
+        } else {
+            handleChange(e);
+        }
+    };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-      <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
-        <h2 className="text-2xl font-bold mb-6">{student ? 'Edit Student' : 'Register New Student'}</h2>
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
-          <div className="flex flex-col items-center gap-4 mb-6">
-            <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageChange}
-                accept="image/png, image/jpeg, image/gif"
-                className="hidden"
-            />
-            <div className="relative">
-                {previewUrl ? (
-                    <img src={previewUrl} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover border-2 border-gray-600" />
-                ) : (
-                    <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 border-dashed">
-                        <UserIcon className="w-10 h-10 text-gray-500" />
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        let finalStudentData = { ...formData };
+
+        if (imageFile) {
+            try {
+                const studentId = student?.id || `new_student_${Date.now()}`;
+                const imagePath = `avatars/students/${studentId}_${imageFile.name}`;
+                const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
+                finalStudentData.avatar = downloadURL;
+            } catch (error) {
+                console.error("Image upload failed:", error);
+                alert("Could not upload the avatar. Please try again.");
+                return;
+            }
+        }
+
+        const { selectedCourseIds, ...studentData } = finalStudentData;
+        const currentCourseIds = student?.enrolledCourses.map(c => c.courseId) || [];
+        const coursesToAddIds = selectedCourseIds.filter((id: string) => !currentCourseIds.includes(id));
+
+        const newEnrolledCourses: EnrolledCourse[] = coursesToAddIds.map((courseId: string) => {
+            const course = courses.find(c => c.id === courseId);
+            if (!course) throw new Error("Course not found during enrollment");
+            return {
+                courseId: course.id,
+                courseName: course.name,
+                startDate: course.startDate,
+                price: course.price,
+                pricePaid: 0,
+                priceDue: course.price,
+                paymentStatus: 'Pending',
+                progress: 0,
+                paymentHistory: [],
+            };
+        });
+
+        studentData.enrolledCourses = [...(student?.enrolledCourses || []), ...newEnrolledCourses];
+        await onSave(studentData);
+    };
+
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const availableCourses = courses.filter(course => new Date(course.startDate) >= fourteenDaysAgo);
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+                <h2 className="text-2xl font-bold mb-6">{student ? 'Edit Student' : 'Register New Student'}</h2>
+                <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
+                    <div className="flex flex-col items-center gap-4 mb-6">
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleImageChange}
+                            accept="image/png, image/jpeg, image/gif"
+                            className="hidden"
+                        />
+                        <div className="relative">
+                            {previewUrl ? (
+                                <img src={previewUrl} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover border-2 border-gray-600" />
+                            ) : (
+                                <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 border-dashed">
+                                    <UserIcon className="w-10 h-10 text-gray-500" />
+                                </div>
+                            )}
+                            {previewUrl && (
+                                <button
+                                    type="button"
+                                    onClick={handleRemoveImage}
+                                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-700 transition-colors shadow-sm"
+                                    title="Remove image"
+                                >
+                                    &times;
+                                </button>
+                            )}
+                        </div>
+                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                            {previewUrl ? 'Change Photo' : 'Upload Photo'}
+                        </Button>
                     </div>
-                )}
-                {previewUrl && (
-                    <button 
-                        type="button" 
-                        onClick={handleRemoveImage}
-                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-700 transition-colors shadow-sm"
-                        title="Remove image"
-                    >
-                        &times;
-                    </button>
-                )}
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                {previewUrl ? 'Change Photo' : 'Upload Photo'}
-            </Button>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input name="name" value={formData.name} onChange={handleChange} placeholder="Full Name" className="w-full bg-gray-700 p-3 rounded" required />
-            <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
-            <input name="messenger" value={formData.messenger} onChange={handleChange} placeholder="@username or link" className="w-full bg-gray-700 p-3 rounded" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <select name="source" value={formData.source} onChange={handleSourceChange} className="w-full bg-gray-700 p-3 rounded">
-              <option value="" disabled>Select a source</option>
-              {sources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              <option value="--add-new--" className="text-indigo-400">-- Add New Source --</option>
-            </select>
-            <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-              <option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
-            </select>
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold my-4">Courses</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {availableCourses.map(course => (
-                <label key={course.id} className="bg-gray-700 p-3 rounded-lg flex items-center space-x-3 cursor-pointer">
-                  <input type="checkbox" checked={formData.selectedCourseIds.includes(course.id)} onChange={() => handleCourseChange(course.id)} className="w-5 h-5 bg-gray-600 border-gray-500 rounded text-indigo-500 focus:ring-indigo-600" />
-                  <div>
-                    <p className="font-bold">{course.name}</p>
-                    <p className="text-xs text-gray-400">{course.teacherName} | {course.startDate}</p>
-                    <p className="text-sm font-semibold text-indigo-400">{formatCurrency(course.price, currency)}</p>
-                  </div>
-                </label>
-              ))}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Full Name" className="w-full bg-gray-700 p-3 rounded" required />
+                        <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
+                        <input name="messenger" value={formData.messenger} onChange={handleChange} placeholder="@username or link" className="w-full bg-gray-700 p-3 rounded" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <select name="source" value={formData.source} onChange={handleSourceChange} className="w-full bg-gray-700 p-3 rounded">
+                            <option value="" disabled>Select a source</option>
+                            {sources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                            <option value="--add-new--" className="text-indigo-400">-- Add New Source --</option>
+                        </select>
+                        <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                            <option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
+                        </select>
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold my-4">Courses</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {availableCourses.map(course => (
+                                <label key={course.id} className="bg-gray-700 p-3 rounded-lg flex items-center space-x-3 cursor-pointer">
+                                    <input type="checkbox" checked={formData.selectedCourseIds.includes(course.id)} onChange={() => handleCourseChange(course.id)} className="w-5 h-5 bg-gray-600 border-gray-500 rounded text-indigo-500 focus:ring-indigo-600" />
+                                    <div>
+                                        <p className="font-bold">{course.name}</p>
+                                        <p className="text-xs text-gray-400">{course.teacherName} | {course.startDate}</p>
+                                        <p className="text-sm font-semibold text-indigo-400">{formatCurrency(course.price, currency)}</p>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </form>
+                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" onClick={handleSave}>{student ? 'Save Changes' : 'Register Student'}</Button>
+                </div>
             </div>
-          </div>
-        </form>
-        <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave}>{student ? 'Save Changes' : 'Register Student'}</Button>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 
@@ -280,10 +282,10 @@ const AddEditEmployeeModal: React.FC<{
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         if (name === 'specializations') {
-             setFormData(prev => ({ ...prev, [name]: value.split(',').map(s => s.trim()) }));
+            setFormData(prev => ({ ...prev, [name]: value.split(',').map(s => s.trim()) }));
         } else {
-             // Prevent NaN from being set in state, which Firestore rejects.
-             setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
+            // Prevent NaN from being set in state, which Firestore rejects.
+            setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
         }
     };
 
@@ -301,12 +303,12 @@ const AddEditEmployeeModal: React.FC<{
     const triggerImageUpload = () => {
         fileInputRef.current?.click();
     };
-    
+
     const handleGenerateBio = async () => {
         setIsGeneratingBio(true);
         try {
             const bio = await geminiService.generateEmployeeBio(formData.name, formData.role, formData.specializations);
-            setFormData(prev => ({...prev, biography: bio}));
+            setFormData(prev => ({ ...prev, biography: bio }));
         } catch (error) {
             console.error("Failed to generate bio:", error);
         } finally {
@@ -314,8 +316,17 @@ const AddEditEmployeeModal: React.FC<{
         }
     };
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSave = async (e: React.FormEvent | React.MouseEvent) => {
+        if (e && e.preventDefault) e.preventDefault();
+        console.log("handleSave triggered");
+        alert("DEBUG: Button Clicked! Validating data...");
+
+        // Basic validation check
+        if (!formData.name || !formData.role) {
+            alert("Name and Role are required!");
+            return;
+        }
+
         let finalData = { ...formData };
 
         if (imageFile) {
@@ -325,19 +336,24 @@ const AddEditEmployeeModal: React.FC<{
                 const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
                 finalData.avatar = downloadURL;
             } catch (error) {
-                console.error("Image upload failed:", error);
-                alert("Could not upload the new avatar. Please try again.");
-                return;
+                console.error("Image upload failed (likely CORS or permission):", error);
+                alert("Image upload failed (CORS/Network). Saving employee with default avatar instead.");
+                // Do NOT return. Proceed to save the employee data without the custom image.
             }
         }
-        await onSave(finalData);
+        try {
+            await onSave(finalData);
+        } catch (error) {
+            console.error("Failed to save employee:", error);
+            alert("Failed to save employee. Please check the console for details.");
+        }
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
                 <h2 className="text-2xl font-bold mb-6">{employee ? 'Редагувати співробітника' : 'Додати нового співробітника'}</h2>
-                <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
+                <div className="flex-1 overflow-y-auto pr-4 space-y-4">
                     <div className="flex flex-col items-center gap-4 mb-4">
                         <input
                             type="file"
@@ -364,27 +380,33 @@ const AddEditEmployeeModal: React.FC<{
                         <input name="name" value={formData.name} onChange={handleChange} placeholder="Повне ім'я" className="w-full bg-gray-700 p-3 rounded" required />
                         <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
-                         <select name="role" value={formData.role} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                        <select name="role" value={formData.role} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
                             <option>Trainer</option><option>Support</option><option>Admin</option><option>Master</option><option>Manager</option><option>Creator</option><option>Master Artist</option><option>Marketing Manager</option><option>IT Support</option>
                         </select>
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="salary" type="number" value={formData.salary} onChange={handleChange} placeholder="Salary (USD/month)" className="w-full bg-gray-700 p-3 rounded" />
                         <input name="hireDate" type="date" value={formData.hireDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" />
                     </div>
                     <div>
                         <input name="specializations" value={formData.specializations.join(', ')} onChange={handleChange} placeholder="Specializations (comma-separated)" className="w-full bg-gray-700 p-3 rounded" />
                     </div>
-                     <div>
+                    <div>
                         <textarea name="biography" value={formData.biography} onChange={handleChange} placeholder="Biography" className="w-full bg-gray-700 p-3 rounded h-24" />
                         <Button type="button" variant="outline" size="sm" onClick={handleGenerateBio} isLoading={isGeneratingBio}>Generate Bio (AI)</Button>
                     </div>
-                </form>
-                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="primary" onClick={handleSave}>{employee ? 'Save Changes' : 'Add Employee'}</Button>
+                    <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                        <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
+                        <button
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                            type="button"
+                            onClick={handleSave}
+                        >
+                            {employee ? 'Save Changes' : 'Add Employee'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -394,19 +416,19 @@ const AddEditEmployeeModal: React.FC<{
 
 // Add/Edit Course Modal
 const CourseModal: React.FC<{
-  course: Course | null;
-  employees: Employee[];
-  courseTemplates: CourseTemplate[];
-  onClose: () => void;
-  onSave: (courseData: Course | Omit<Course, 'id'>) => Promise<void>;
+    course: Course | null;
+    employees: Employee[];
+    courseTemplates: CourseTemplate[];
+    onClose: () => void;
+    onSave: (courseData: Course | Omit<Course, 'id'>) => Promise<void>;
 }> = ({ course, employees, courseTemplates, onClose, onSave }) => {
     const [formData, setFormData] = useState<Course | Omit<Course, 'id'>>(() => {
-       const defaultName = courseTemplates.length > 0 ? courseTemplates[0].name : '';
-       return course || {
+        const defaultName = courseTemplates.length > 0 ? courseTemplates[0].name : '';
+        return course || {
             name: defaultName,
             description: '', image: '', teacherId: '', teacherName: '',
             duration: '', price: 0, startDate: new Date().toISOString().split('T')[0], type: 'Ochnyy'
-       };
+        };
     });
     const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
 
@@ -416,7 +438,7 @@ const CourseModal: React.FC<{
             // Add the current course's name to the list if it's not a standard template
             options.push({ id: course.id, name: course.name });
         }
-        return options.sort((a,b) => a.name.localeCompare(b.name));
+        return options.sort((a, b) => a.name.localeCompare(b.name));
     }, [courseTemplates, course]);
 
     useEffect(() => {
@@ -427,19 +449,19 @@ const CourseModal: React.FC<{
         const { name, value, type } = e.target;
         if (name === 'teacherId') {
             const selectedTeacher = employees.find(emp => emp.id === value);
-            setFormData(prev => ({...prev, teacherId: value, teacherName: selectedTeacher?.name || '' }));
+            setFormData(prev => ({ ...prev, teacherId: value, teacherName: selectedTeacher?.name || '' }));
         } else {
-             // Prevent NaN from being set in state, which Firestore rejects.
-             setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
+            // Prevent NaN from being set in state, which Firestore rejects.
+            setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
         }
     };
-    
+
     const handleGenerateDescription = async () => {
         if (!formData.name) return;
         setIsGeneratingDesc(true);
         try {
             const desc = await geminiService.generateCourseDescription(formData.name);
-            setFormData(prev => ({...prev, description: desc}));
+            setFormData(prev => ({ ...prev, description: desc }));
         } catch (error) {
             console.error("Failed to generate description:", error);
         } finally {
@@ -459,27 +481,27 @@ const CourseModal: React.FC<{
                 <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <select name="name" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
-                             {courseNameOptions.map(template => <option key={template.id} value={template.name}>{template.name}</option>)}
+                            {courseNameOptions.map(template => <option key={template.id} value={template.name}>{template.name}</option>)}
                         </select>
-                         <select name="teacherId" value={formData.teacherId} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
+                        <select name="teacherId" value={formData.teacherId} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
                             <option value="" disabled>Select a Teacher</option>
-                             {employees.filter(e => e.role === 'Trainer' || e.role === 'Master').map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                            {employees.filter(e => e.role === 'Trainer' || e.role === 'Master').map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                         </select>
                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <input name="price" type="number" value={formData.price} onChange={handleChange} placeholder="Price (USD)" className="w-full bg-gray-700 p-3 rounded" />
                         <input name="startDate" type="date" value={formData.startDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" />
-                         <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                        <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
                             <option>Ochnyy</option><option>Online</option><option>Specialized</option><option>Workshop</option>
                         </select>
                     </div>
-                     <input name="duration" value={formData.duration} onChange={handleChange} placeholder="Duration (e.g., 5 days, 3 hours)" className="w-full bg-gray-700 p-3 rounded" />
-                     <div>
+                    <input name="duration" value={formData.duration} onChange={handleChange} placeholder="Duration (e.g., 5 days, 3 hours)" className="w-full bg-gray-700 p-3 rounded" />
+                    <div>
                         <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description" className="w-full bg-gray-700 p-3 rounded h-24" />
                         <Button type="button" variant="outline" size="sm" onClick={handleGenerateDescription} isLoading={isGeneratingDesc}>Generate with AI</Button>
                     </div>
                 </form>
-                 <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button variant="primary" onClick={handleSave}>{course ? 'Save Course' : 'Add Course'}</Button>
                 </div>
@@ -491,9 +513,9 @@ const CourseModal: React.FC<{
 
 // Course Template Manager Modal
 const CourseTemplateModal: React.FC<{
-  templates: CourseTemplate[];
-  onClose: () => void;
-  onSave: (templates: CourseTemplate[]) => Promise<void>;
+    templates: CourseTemplate[];
+    onClose: () => void;
+    onSave: (templates: CourseTemplate[]) => Promise<void>;
 }> = ({ templates, onClose, onSave }) => {
     const [localTemplates, setLocalTemplates] = useState<CourseTemplate[]>(JSON.parse(JSON.stringify(templates)));
     const [newTemplateName, setNewTemplateName] = useState('');
@@ -512,9 +534,9 @@ const CourseTemplateModal: React.FC<{
             console.error("Error adding template:", error);
         }
     };
-    
+
     const handleUpdateTemplate = async (template: CourseTemplate) => {
-       await firestoreService.updateCourseTemplate(template.id, { name: template.name });
+        await firestoreService.updateCourseTemplate(template.id, { name: template.name });
     };
 
     const handleDeleteTemplate = async (id: string) => {
@@ -527,7 +549,7 @@ const CourseTemplateModal: React.FC<{
             }
         }
     };
-    
+
     const handleClose = () => {
         // Here we don't call the onSave prop because changes are made live.
         // The parent component should re-fetch.
@@ -562,7 +584,7 @@ const CourseTemplateModal: React.FC<{
                     />
                     <Button variant="primary" onClick={handleAddTemplate}>Add Name</Button>
                 </div>
-                 <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
+                <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
                     <Button variant="secondary" onClick={handleClose}>Close</Button>
                 </div>
             </div>
@@ -574,9 +596,9 @@ const CourseTemplateModal: React.FC<{
 
 // Note Modal
 const NoteModal: React.FC<{
-  studentId: string;
-  onClose: () => void;
-  onSave: (studentId: string, content: string) => Promise<void>;
+    studentId: string;
+    onClose: () => void;
+    onSave: (studentId: string, content: string) => Promise<void>;
 }> = ({ studentId, onClose, onSave }) => {
     const [content, setContent] = useState('');
     const handleSave = async () => {
@@ -598,14 +620,37 @@ const NoteModal: React.FC<{
     );
 };
 
-// Payment Modal
+// Custom Confirm Modal
+const DeleteConfirmationModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    message: string;
+}> = ({ isOpen, onClose, onConfirm, title, message }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4" onClick={(e) => { e.stopPropagation(); }}>
+            <div className="bg-gray-800 p-6 rounded-lg max-w-sm w-full border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
+                <p className="text-gray-300 mb-6">{message}</p>
+                <div className="flex justify-end space-x-3">
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onClose(); }}>Cancel</Button>
+                    <Button variant="danger" onClick={(e) => { e.stopPropagation(); onConfirm(); }}>Delete</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const PaymentModal: React.FC<{
-  student: Student;
-  enrolledCourse: EnrolledCourse;
-  onClose: () => void;
-  onSave: (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => Promise<void>;
-  currency: Currency;
+    student: Student;
+    enrolledCourse: EnrolledCourse;
+    onClose: () => void;
+    onSave: (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => Promise<void>;
+    currency: Currency;
 }> = ({ student, enrolledCourse, onClose, onSave, currency }) => {
+
     const [amount, setAmount] = useState(enrolledCourse.priceDue > 0 ? enrolledCourse.priceDue : 0);
     const [method, setMethod] = useState(PAYMENT_METHODS[0]);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -620,7 +665,7 @@ const PaymentModal: React.FC<{
         <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 p-8 rounded-lg w-full max-w-lg">
                 <h2 className="text-2xl font-bold mb-4">Record Payment</h2>
-                 <div className="bg-gray-700 p-3 rounded-lg mb-6 text-sm">
+                <div className="bg-gray-700 p-3 rounded-lg mb-6 text-sm">
                     <div className="flex justify-between items-center">
                         <span className="text-gray-400">Student:</span>
                         <span className="font-semibold text-white">{student.name}</span>
@@ -656,14 +701,14 @@ const PaymentModal: React.FC<{
 // =============================================================================
 
 const StudentAccordionItem: React.FC<{
-  student: Student;
-  isExpanded: boolean;
-  onToggle: () => void;
-  onEdit: (student: Student) => void;
-  onDelete: (id: string) => void;
-  onAddNote: (id: string) => void;
-  onAddPayment: (student: Student, enrolledCourse: EnrolledCourse) => void;
-  currency: Currency;
+    student: Student;
+    isExpanded: boolean;
+    onToggle: () => void;
+    onEdit: (student: Student) => void;
+    onDelete: (id: string) => void;
+    onAddNote: (id: string) => void;
+    onAddPayment: (student: Student, enrolledCourse: EnrolledCourse) => void;
+    currency: Currency;
 }> = ({ student, isExpanded, onToggle, onEdit, onDelete, onAddNote, onAddPayment, currency }) => {
     const [showHistoryForCourse, setShowHistoryForCourse] = useState<string | null>(null);
     const [aiAdvice, setAiAdvice] = useState<string | null>(null);
@@ -720,27 +765,27 @@ const StudentAccordionItem: React.FC<{
                 <div className="p-6 border-t border-gray-700 space-y-6">
                     {/* Contact Info & Notes */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                         <div className="space-y-3">
+                        <div className="space-y-3">
                             <h4 className="text-lg font-semibold text-white border-b border-gray-600 pb-2">Контактна інформація</h4>
                             <div className="flex items-center gap-4 text-indigo-400">
-                                <a href={`tel:${student.phone}`} title="Call" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><PhoneIcon/></a>
-                                <a href={`sms:${student.phone}`} title="SMS" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><MessageIcon/></a>
-                                <a href={`mailto:${student.email}`} title="Email" className={!student.email ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><EmailIcon/></a>
+                                <a href={`tel:${student.phone}`} title="Call" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><PhoneIcon /></a>
+                                <a href={`sms:${student.phone}`} title="SMS" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><MessageIcon /></a>
+                                <a href={`mailto:${student.email}`} title="Email" className={!student.email ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><EmailIcon /></a>
                             </div>
-                             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                                 <span className="text-gray-400">Телефон:</span><span className="text-white">{student.phone || 'N/A'}</span>
                                 <span className="text-gray-400">Email:</span><span className="text-white">{student.email || 'N/A'}</span>
                                 <span className="text-gray-400">Messenger:</span><span className="text-white">{student.messenger || 'N/A'}</span>
                                 <span className="text-gray-400">Джерело:</span><span className="text-white">{student.source || 'N/A'}</span>
                                 <span className="text-gray-400">Дата реєстрації:</span><span className="text-white">{student.registrationDate}</span>
                             </div>
-                         </div>
-                         <div className="space-y-3">
+                        </div>
+                        <div className="space-y-3">
                             <div className="flex justify-between items-center border-b border-gray-600 pb-2">
                                 <h4 className="text-lg font-semibold text-white">Нотатки</h4>
                                 <Button size="sm" variant="outline" onClick={() => onAddNote(student.id)}>Додати нотатку</Button>
                             </div>
-                             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                            <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
                                 {student.notes.length > 0 ? student.notes.slice().reverse().map(note => (
                                     <div key={note.id} className="text-sm bg-gray-700/50 p-2 rounded">
                                         <p className="text-gray-400 text-xs">{note.date}</p>
@@ -748,7 +793,7 @@ const StudentAccordionItem: React.FC<{
                                     </div>
                                 )) : <p className="text-sm text-gray-500 italic">Нотаток немає.</p>}
                             </div>
-                         </div>
+                        </div>
                     </div>
                     {/* Consolidated Payment History */}
                     <div>
@@ -819,7 +864,7 @@ const StudentAccordionItem: React.FC<{
                         </div>
                     </div>
                     {/* Actions */}
-                     <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+                    <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
                         <Button variant="outline" onClick={fetchAiAdvice} isLoading={isLoadingAdvice}>AI Поради</Button>
                         <Button variant="secondary" onClick={() => onEdit(student)}>Редагувати</Button>
                         <Button variant="danger" onClick={() => onDelete(student.id)}>Видалити</Button>
@@ -832,16 +877,35 @@ const StudentAccordionItem: React.FC<{
 
 
 const EmployeeAccordionItem: React.FC<{
-  employee: Employee;
-  courses: Course[];
-  isExpanded: boolean;
-  onToggle: () => void;
-  onEdit: (employee: Employee) => void;
-  onDelete: (id: string) => void;
+    employee: Employee;
+    courses: Course[];
+    isExpanded: boolean;
+    onToggle: () => void;
+    onEdit: (employee: Employee) => void;
+    onDelete: (id: string) => void;
 }> = ({ employee, courses, isExpanded, onToggle, onEdit, onDelete }) => {
     const today = new Date().toISOString().split('T')[0];
     const upcomingCourses = courses.filter(c => c.teacherId === employee.id && c.startDate >= today);
     const pastCourses = courses.filter(c => c.teacherId === employee.id && c.startDate < today);
+
+    // AI Advice State
+    const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+    const [isLoadingAdvice, setIsLoadingAdvice] = useState(false);
+
+    const fetchAiAdvice = async (e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent toggling accordion
+        setIsLoadingAdvice(true);
+        setAiAdvice(null);
+        try {
+            const advice = await geminiService.getEmployeeAdvice(employee);
+            setAiAdvice(advice);
+        } catch (error) {
+            console.error("Failed to fetch AI advice:", error);
+            setAiAdvice("Не вдалося отримати пораду. Спробуйте пізніше.");
+        } finally {
+            setIsLoadingAdvice(false);
+        }
+    };
 
     return (
         <div className="bg-gray-800 rounded-lg">
@@ -850,38 +914,88 @@ const EmployeeAccordionItem: React.FC<{
                     <img src={employee.avatar} alt={employee.name} className="w-10 h-10 rounded-full object-cover" />
                 ) : (
                     <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-                        <UserIcon className="w-6 h-6 text-gray-500"/>
+                        <UserIcon className="w-6 h-6 text-gray-500" />
                     </div>
                 )}
                 <div className="flex-1 ml-4">
                     <p className="font-bold text-white">{employee.name}</p>
                     <p className="text-sm text-gray-400">{employee.role}</p>
                 </div>
-                <p className="text-indigo-400 font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(employee.salary)} / month</p>
-                <ChevronDownIcon className={`w-6 h-6 ml-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                <div className="flex items-center gap-4">
+                    {/* Small AI Button in collapsed view */}
+                    <button
+                        onClick={fetchAiAdvice}
+                        disabled={isLoadingAdvice}
+                        className="p-1.5 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 transition-colors"
+                        title="Get AI Advice"
+                    >
+                        {isLoadingAdvice ? (
+                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                <path fillRule="evenodd" d="M9 4.5a.75.75 0 0 1 .721.544l.813 2.846a3.75 3.75 0 0 0 2.576 2.576l2.846.813a.75.75 0 0 1 0 1.442l-2.846.813a3.75 3.75 0 0 0-2.576 2.576l-.813 2.846a.75.75 0 0 1-1.442 0l-.813-2.846a3.75 3.75 0 0 0-2.576-2.576l-2.846-.813a.75.75 0 0 1 0-1.442l2.846-.813a3.75 3.75 0 0 0 2.576-2.576l.813-2.846A.75.75 0 0 1 9 4.5ZM18 1.5a.75.75 0 0 1 .728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 0 1 0 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 0 1-1.456 0l-.258-1.036a2.625 2.625 0 0 0-1.91-1.91l-1.036-.258a.75.75 0 0 1 0-1.456l1.036-.258a2.625 2.625 0 0 0 1.91-1.91l.258-1.036A.75.75 0 0 1 18 1.5M16.5 15a.75.75 0 0 1 .712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 0 1 0 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 0 1-1.422 0l-.395-1.183a1.5 1.5 0 0 0-.948-.948l-1.183-.395a.75.75 0 0 1 0-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0 1 16.5 15Z" clipRule="evenodd" />
+                            </svg>
+                        )}
+                    </button>
+                    <p className="text-indigo-400 font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(employee.salary)} / month</p>
+                    <ChevronDownIcon className={`w-6 h-6 ml-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </div>
             </div>
             {isExpanded && (
                 <div className="p-6 border-t border-gray-700 space-y-4">
+                    {/* AI Advice Display */}
+                    {aiAdvice && (
+                        <div className="bg-indigo-900/40 border border-indigo-700/50 p-4 rounded-lg animate-fade-in relative">
+                            <h4 className="flex items-center gap-2 text-indigo-300 font-bold mb-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                    <path fillRule="evenodd" d="M9 4.5a.75.75 0 0 1 .721.544l.813 2.846a3.75 3.75 0 0 0 2.576 2.576l2.846.813a.75.75 0 0 1 0 1.442l-2.846.813a3.75 3.75 0 0 0-2.576 2.576l-.813 2.846a.75.75 0 0 1-1.442 0l-.813-2.846a3.75 3.75 0 0 0-2.576-2.576l-2.846-.813a.75.75 0 0 1 0-1.442l2.846-.813a3.75 3.75 0 0 0 2.576-2.576l.813-2.846A.75.75 0 0 1 9 4.5ZM18 1.5a.75.75 0 0 1 .728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 0 1 0 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 0 1-1.456 0l-.258-1.036a2.625 2.625 0 0 0-1.91-1.91l-1.036-.258a.75.75 0 0 1 0-1.456l1.036-.258a2.625 2.625 0 0 0 1.91-1.91l.258-1.036A.75.75 0 0 1 18 1.5M16.5 15a.75.75 0 0 1 .712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 0 1 0 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 0 1-1.422 0l-.395-1.183a1.5 1.5 0 0 0-.948-.948l-1.183-.395a.75.75 0 0 1 0-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0 1 16.5 15Z" clipRule="evenodd" />
+                                </svg>
+                                Magic HR Insight
+                            </h4>
+                            <p className="text-gray-200 text-sm whitespace-pre-wrap">{aiAdvice}</p>
+                            <button onClick={() => setAiAdvice(null)} className="absolute top-2 right-2 text-indigo-400 hover:text-white">
+                                &times;
+                            </button>
+                        </div>
+                    )}
                     <p className="text-sm text-gray-300">{employee.biography}</p>
                     <div>
                         <h4 className="font-semibold">Upcoming Courses ({upcomingCourses.length})</h4>
-                         {upcomingCourses.length > 0 ? (
+                        {upcomingCourses.length > 0 ? (
                             <ul className="list-disc list-inside text-sm text-gray-400">
                                 {upcomingCourses.map(c => <li key={c.id}>{c.name} ({c.startDate})</li>)}
                             </ul>
                         ) : <p className="text-sm text-gray-500 italic">No upcoming courses.</p>}
                     </div>
-                     <div>
+                    <div>
                         <h4 className="font-semibold">Past Courses ({pastCourses.length})</h4>
                         {pastCourses.length > 0 ? (
-                             <ul className="list-disc list-inside text-sm text-gray-400">
+                            <ul className="list-disc list-inside text-sm text-gray-400">
                                 {pastCourses.map(c => <li key={c.id}>{c.name}</li>)}
                             </ul>
-                        ): <p className="text-sm text-gray-500 italic">No past courses.</p>}
+                        ) : <p className="text-sm text-gray-500 italic">No past courses.</p>}
                     </div>
                     <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
-                        <Button variant="secondary" onClick={() => onEdit(employee)}>Edit</Button>
-                        <Button variant="danger" onClick={() => onDelete(employee.id)}>Delete</Button>
+                        <button
+                            type="button"
+                            className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+                            onClick={(e) => { e.stopPropagation(); onEdit(employee); }}
+                        >
+                            Edit
+                        </button>
+                        <button
+                            type="button"
+                            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(employee.id);
+                            }}
+                        >
+                            Delete
+                        </button>
                     </div>
                 </div>
             )}
@@ -891,17 +1005,36 @@ const EmployeeAccordionItem: React.FC<{
 
 
 const CourseAccordionItem: React.FC<{
-  course: Course;
-  students: Student[];
-  isExpanded: boolean;
-  onToggle: () => void;
-  onEdit: (course: Course) => void;
-  onDelete: (id: string, name: string) => void;
-  currency: Currency;
+    course: Course;
+    students: Student[];
+    isExpanded: boolean;
+    onToggle: () => void;
+    onEdit: (course: Course) => void;
+    onDelete: (id: string, name: string) => void;
+    currency: Currency;
 }> = ({ course, students, isExpanded, onToggle, onEdit, onDelete, currency }) => {
     const enrolledStudents = useMemo(() => {
         return students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id));
     }, [students, course.id]);
+
+    // AI Advice State
+    const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+    const [isLoadingAdvice, setIsLoadingAdvice] = useState(false);
+
+    const fetchAiAdvice = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setIsLoadingAdvice(true);
+        setAiAdvice(null);
+        try {
+            const advice = await geminiService.getCourseAdvice(course, students);
+            setAiAdvice(advice);
+        } catch (error) {
+            console.error("Failed to fetch AI advice:", error);
+            setAiAdvice("Не вдалося отримати пораду. Спробуйте пізніше.");
+        } finally {
+            setIsLoadingAdvice(false);
+        }
+    };
 
     return (
         <div className="bg-gray-800 rounded-lg">
@@ -910,13 +1043,47 @@ const CourseAccordionItem: React.FC<{
                     <p className="font-bold text-white">{course.name}</p>
                     <p className="text-sm text-gray-400">{course.teacherName} | {course.startDate}</p>
                 </div>
-                <div className="text-sm text-gray-300 mr-4">{enrolledStudents.length} {enrolledStudents.length === 1 ? 'student' : 'students'}</div>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={fetchAiAdvice}
+                        disabled={isLoadingAdvice}
+                        className="p-1.5 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 transition-colors"
+                        title="Get Course Strategy"
+                    >
+                        {isLoadingAdvice ? (
+                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.765-1.272 5.219 0 1.527 1.335 1.954 3.518.995 5.29a.75.75 0 0 1-1.312-.71c.642-1.185.346-2.585-.659-3.451ZM9 12a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z" clipRule="evenodd" />
+                            </svg>
+                        )}
+                    </button>
+                    <div className="text-sm text-gray-300 mr-4">{enrolledStudents.length} {enrolledStudents.length === 1 ? 'student' : 'students'}</div>
+                </div>
                 <ChevronDownIcon className={`w-6 h-6 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </div>
             {isExpanded && (
                 <div className="p-6 border-t border-gray-700">
+                    {/* AI Advice Display */}
+                    {aiAdvice && (
+                        <div className="bg-purple-900/40 border border-purple-700/50 p-4 rounded-lg mb-6 animate-fade-in relative">
+                            <h4 className="flex items-center gap-2 text-purple-300 font-bold mb-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                    <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.765-1.272 5.219 0 1.527 1.335 1.954 3.518.995 5.29a.75.75 0 0 1-1.312-.71c.642-1.185.346-2.585-.659-3.451ZM9 12a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z" clipRule="evenodd" />
+                                </svg>
+                                Course Strategy Insight
+                            </h4>
+                            <p className="text-gray-200 text-sm whitespace-pre-wrap">{aiAdvice}</p>
+                            <button onClick={() => setAiAdvice(null)} className="absolute top-2 right-2 text-purple-400 hover:text-white">
+                                &times;
+                            </button>
+                        </div>
+                    )}
                     <h4 className="font-semibold mb-3">Enrolled Students & Payments</h4>
-                     {enrolledStudents.length > 0 ? (
+                    {enrolledStudents.length > 0 ? (
                         <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
                             {enrolledStudents.map(student => {
                                 const enrollmentDetails = student.enrolledCourses.find(ec => ec.courseId === course.id);
@@ -925,16 +1092,16 @@ const CourseAccordionItem: React.FC<{
                                     <div key={student.id} className="bg-gray-700/50 p-3 rounded">
                                         <p className="font-semibold text-white">{student.name}</p>
                                         <div className="text-xs text-gray-400">
-                                            Total Paid: <span className="text-green-400">{formatCurrency(Number(enrollmentDetails.pricePaid), currency)}</span> | 
+                                            Total Paid: <span className="text-green-400">{formatCurrency(Number(enrollmentDetails.pricePaid), currency)}</span> |
                                             Due: <span className="text-red-400">{formatCurrency(Number(enrollmentDetails.priceDue), currency)}</span>
                                         </div>
-                                         {enrollmentDetails.paymentHistory.length > 0 && (
+                                        {enrollmentDetails.paymentHistory.length > 0 && (
                                             <ul className="text-xs list-disc list-inside pl-2 mt-1">
                                                 {enrollmentDetails.paymentHistory.map(p => (
                                                     <li key={p.id}>{p.date}: {formatCurrency(Number(p.amount), currency)} ({p.method})</li>
                                                 ))}
                                             </ul>
-                                         )}
+                                        )}
                                     </div>
                                 );
                             })}
@@ -958,362 +1125,400 @@ const CourseAccordionItem: React.FC<{
 // =============================================================================
 
 const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
-  // Data states
-  const [students, setStudents] = useState<Student[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [courseTemplates, setCourseTemplates] = useState<CourseTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+    // Data states
+    const [students, setStudents] = useState<Student[]>([]);
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [courseTemplates, setCourseTemplates] = useState<CourseTemplate[]>([]);
+    const [loading, setLoading] = useState(true);
 
-  // UI states
-  const [activeTab, setActiveTab] = useState<Tab>('students');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [studentStatusFilter, setStudentStatusFilter] = useState('All');
-  const [courseDateFilter, setCourseDateFilter] = useState({ from: '', to: '' });
-  
-  // Modal states
-  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
-  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
-  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
-  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
-  const [noteForStudentId, setNoteForStudentId] = useState<string | null>(null);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentDetails, setPaymentDetails] = useState<{ student: Student; enrolledCourse: EnrolledCourse } | null>(null);
-  const [isCourseTemplateModalOpen, setIsCourseTemplateModalOpen] = useState(false);
+    // UI states
+    const [activeTab, setActiveTab] = useState<Tab>('students');
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [studentStatusFilter, setStudentStatusFilter] = useState('All');
+    const [courseDateFilter, setCourseDateFilter] = useState({ from: '', to: '' });
 
-  // Drag and Drop refs
-  const dragEmployeeId = useRef<string | null>(null);
-  const dragOverEmployeeId = useRef<string | null>(null);
+    // Modal states
+    const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+    const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+    const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
+    const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+    const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+    const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+    const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+    const [noteForStudentId, setNoteForStudentId] = useState<string | null>(null);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [paymentDetails, setPaymentDetails] = useState<{ student: Student; enrolledCourse: EnrolledCourse } | null>(null);
+    const [isCourseTemplateModalOpen, setIsCourseTemplateModalOpen] = useState(false);
+
+    // Drag and Drop refs
+    const dragEmployeeId = useRef<string | null>(null);
+    const dragOverEmployeeId = useRef<string | null>(null);
 
 
-  const fetchInitialData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [studentsData, coursesData, employeesData, templatesData] = await Promise.all([
-        firestoreService.getStudents(),
-        firestoreService.getCourses(),
-        firestoreService.getEmployees(),
-        firestoreService.getCourseTemplates(),
-      ]);
-      setStudents(studentsData);
-      setCourses(coursesData);
-      setEmployees(employeesData);
-      setCourseTemplates(templatesData.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      console.error("Failed to fetch initial data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean; id: string | null; type: 'student' | 'employee' | 'course' | null; name?: string; message?: string }>({ isOpen: false, id: null, type: null });
 
-  useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
-
-  // Handlers for Modals
-  const openAddEditStudentModal = (student: Student | null) => { setEditingStudent(student); setIsStudentModalOpen(true); };
-  const openAddEditEmployeeModal = (employee: Employee | null) => { setEditingEmployee(employee); setIsEmployeeModalOpen(true); };
-  const openAddEditCourseModal = (course: Course | null) => { setEditingCourse(course); setIsCourseModalOpen(true); };
-  const openNoteModal = (studentId: string) => { setNoteForStudentId(studentId); setIsNoteModalOpen(true); };
-  const openPaymentModal = (student: Student, enrolledCourse: EnrolledCourse) => { setPaymentDetails({ student, enrolledCourse }); setIsPaymentModalOpen(true); };
-
-  // Save Handlers
-  const handleSaveStudent = async (studentData: Student | Omit<Student, 'id'>) => {
-    if ('id' in studentData) {
-      await firestoreService.updateStudent(studentData.id, studentData);
-    } else {
-      await firestoreService.addStudent(studentData);
-    }
-    await fetchInitialData();
-    setIsStudentModalOpen(false);
-  };
-  
-  const handleSaveEmployee = async (employeeData: Employee | Omit<Employee, 'id'>) => {
-    if ('id' in employeeData) {
-      await firestoreService.updateEmployee(employeeData.id, employeeData);
-    } else {
-      const newEmployeeData = { ...employeeData, order: employees.length };
-      await firestoreService.addEmployee(newEmployeeData);
-    }
-    await fetchInitialData();
-    setIsEmployeeModalOpen(false);
-  };
-  
-  const handleSaveCourse = async (courseData: Course | Omit<Course, 'id'>) => {
-    if ('id' in courseData) {
-      await firestoreService.updateCourse(courseData.id, courseData);
-    } else {
-      await firestoreService.addCourse(courseData);
-    }
-    await fetchInitialData();
-    setIsCourseModalOpen(false);
-  };
-
-  const handleSaveNote = async (studentId: string, content: string) => {
-    await firestoreService.addNoteToStudent(studentId, content);
-    await fetchInitialData();
-    setIsNoteModalOpen(false);
-  };
-
-  const handleAddPayment = async (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => {
-    await firestoreService.addPaymentToStudent(studentId, courseIdentifier, payment);
-    await fetchInitialData();
-    setIsPaymentModalOpen(false);
-  };
-  
-  // Delete Handlers
-  const handleDeleteStudent = async (id: string) => {
-    if (window.confirm("Are you sure?")) {
-      await firestoreService.deleteStudent(id);
-      await fetchInitialData();
-    }
-  };
-  
-  const handleDeleteEmployee = async (id: string) => {
-    if (window.confirm("Are you sure?")) {
-      await firestoreService.deleteEmployee(id);
-      await fetchInitialData();
-    }
-  };
-  
-  const handleDeleteCourse = async (courseId: string, courseName: string) => {
-    if (window.confirm(`Are you sure you want to delete the course "${courseName}"? This will also un-enroll all students from it.`)) {
+    const fetchInitialData = useCallback(async () => {
+        setLoading(true);
         try {
-            setLoading(true);
-            const studentsToUpdate = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === courseId));
-            
-            const updatePromises = studentsToUpdate.map(student => {
-                const updatedCourses = student.enrolledCourses.filter(ec => ec.courseId !== courseId);
-                return firestoreService.updateStudent(student.id, { enrolledCourses: updatedCourses });
-            });
-            
-            await Promise.all(updatePromises);
-            await firestoreService.deleteCourse(courseId);
-            
-            alert(`Course "${courseName}" and all related enrollments have been deleted.`);
-            await fetchInitialData();
+            const [studentsData, coursesData, employeesData, templatesData] = await Promise.all([
+                firestoreService.getStudents(),
+                firestoreService.getCourses(),
+                firestoreService.getEmployees(),
+                firestoreService.getCourseTemplates(),
+            ]);
+            setStudents(studentsData);
+            setCourses(coursesData);
+            setEmployees(employeesData);
+            setCourseTemplates(templatesData.sort((a, b) => a.name.localeCompare(b.name)));
         } catch (error) {
-            console.error("Error deleting course:", error);
-            alert("Failed to delete the course. Please check the console for details.");
+            console.error("Failed to fetch initial data:", error);
         } finally {
             setLoading(false);
         }
-    }
-  };
+    }, []);
 
-  // Drag and Drop Handlers for Employees
-  const handleEmployeeDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
-    dragEmployeeId.current = id;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  
-  const handleEmployeeDragEnter = (e: React.DragEvent<HTMLDivElement>, id: string) => {
-    dragOverEmployeeId.current = id;
-  };
-  
-  const handleEmployeeDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (!dragEmployeeId.current || !dragOverEmployeeId.current || dragEmployeeId.current === dragOverEmployeeId.current) {
-        return;
-    }
-    const originalEmployees = [...employees];
-    const dragIndex = originalEmployees.findIndex(emp => emp.id === dragEmployeeId.current);
-    const hoverIndex = originalEmployees.findIndex(emp => emp.id === dragOverEmployeeId.current);
+    useEffect(() => {
+        fetchInitialData();
+    }, [fetchInitialData]);
 
-    if (dragIndex === -1 || hoverIndex === -1) { return; }
-    
-    const newEmployees = [...originalEmployees];
-    const [draggedItem] = newEmployees.splice(dragIndex, 1);
-    newEmployees.splice(hoverIndex, 0, draggedItem);
-    
-    setEmployees(newEmployees);
+    // Handlers for Modals
+    const openAddEditStudentModal = (student: Student | null) => { setEditingStudent(student); setIsStudentModalOpen(true); };
+    const openAddEditEmployeeModal = (employee: Employee | null) => { setEditingEmployee(employee); setIsEmployeeModalOpen(true); };
+    const openAddEditCourseModal = (course: Course | null) => { setEditingCourse(course); setIsCourseModalOpen(true); };
+    const openNoteModal = (studentId: string) => { setNoteForStudentId(studentId); setIsNoteModalOpen(true); };
+    const openPaymentModal = (student: Student, enrolledCourse: EnrolledCourse) => { setPaymentDetails({ student, enrolledCourse }); setIsPaymentModalOpen(true); };
 
-    try {
-        const orderedEmployeesToUpdate = newEmployees.map((emp, index) => ({
-            id: emp.id,
-            order: index,
-        }));
-        await firestoreService.updateEmployeesOrder(orderedEmployeesToUpdate);
-    } catch (error) {
-        console.error("Failed to update employee order:", error);
-        alert("Could not save the new order. Please try again.");
-        setEmployees(originalEmployees); // Revert on error
-    } finally {
+    // Save Handlers
+    const handleSaveStudent = async (studentData: Student | Omit<Student, 'id'>) => {
+        if ('id' in studentData) {
+            await firestoreService.updateStudent(studentData.id, studentData);
+        } else {
+            await firestoreService.addStudent(studentData);
+        }
+        await fetchInitialData();
+        setIsStudentModalOpen(false);
+    };
+
+    const handleSaveEmployee = async (employeeData: Employee | Omit<Employee, 'id'>) => {
+        try {
+            if ('id' in employeeData) {
+                alert(`DEBUG: Attempting to UPDATE employee ID: ${employeeData.id}`);
+                await firestoreService.updateEmployee(employeeData.id, employeeData);
+                alert("SUCCESS: Employee Updated!");
+            } else {
+                const newEmployeeData = { ...employeeData, order: employees.length };
+                const result = await firestoreService.addEmployee(newEmployeeData);
+                if (result && 'success' in result && !result.success) {
+                    alert(result.message);
+                    return; // Do not close modal if failed
+                }
+            }
+            await fetchInitialData();
+            setIsEmployeeModalOpen(false);
+            alert("SUCCESS: Employee Saved!");
+        } catch (error) {
+            console.error("Error in handleSaveEmployee:", error);
+            alert("An error occurred while saving the employee: " + (error instanceof Error ? error.message : String(error)));
+        }
+    };
+
+    const handleSaveCourse = async (courseData: Course | Omit<Course, 'id'>) => {
+        if ('id' in courseData) {
+            await firestoreService.updateCourse(courseData.id, courseData);
+        } else {
+            await firestoreService.addCourse(courseData);
+        }
+        await fetchInitialData();
+        setIsCourseModalOpen(false);
+    };
+
+    const handleSaveNote = async (studentId: string, content: string) => {
+        await firestoreService.addNoteToStudent(studentId, content);
+        await fetchInitialData();
+        setIsNoteModalOpen(false);
+    };
+
+    const handleAddPayment = async (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => {
+        await firestoreService.addPaymentToStudent(studentId, courseIdentifier, payment);
+        await fetchInitialData();
+        setIsPaymentModalOpen(false);
+    };
+
+    // Delete Handlers
+    const handleDeleteStudent = (id: string) => {
+        setDeleteConfirmation({ isOpen: true, id, type: 'student', name: 'Student' });
+    };
+
+    const handleDeleteEmployee = (id: string) => {
+        setDeleteConfirmation({ isOpen: true, id, type: 'employee', name: 'Employee' });
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteConfirmation.id || !deleteConfirmation.type) return;
+
+        try {
+            setLoading(true);
+            if (deleteConfirmation.type === 'student') {
+                await firestoreService.deleteStudent(deleteConfirmation.id);
+            } else if (deleteConfirmation.type === 'employee') {
+                await firestoreService.deleteEmployee(deleteConfirmation.id);
+            } else if (deleteConfirmation.type === 'course') {
+                const courseIdToDelete = deleteConfirmation.id;
+                const courseNameToDelete = deleteConfirmation.name;
+
+                const studentsToUpdate = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === courseIdToDelete));
+
+                const updatePromises = studentsToUpdate.map(student => {
+                    const updatedCourses = student.enrolledCourses.filter(ec => ec.courseId !== courseIdToDelete);
+                    return firestoreService.updateStudent(student.id, { enrolledCourses: updatedCourses });
+                });
+
+                await Promise.all(updatePromises);
+                await firestoreService.deleteCourse(courseIdToDelete);
+
+                alert(`Course "${courseNameToDelete}" and all related enrollments have been deleted.`);
+            }
+
+            await fetchInitialData();
+            alert("SUCCESS: Deleted Successfully!");
+        } catch (error) {
+            console.error("Delete failed:", error);
+            alert("Delete failed: " + String(error));
+        } finally {
+            setDeleteConfirmation({ isOpen: false, id: null, type: null });
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteCourse = async (courseId: string, courseName: string) => {
+        setDeleteConfirmation({
+            isOpen: true,
+            id: courseId,
+            type: 'course',
+            name: courseName,
+            message: `Are you sure you want to delete the course "${courseName}"? This will also un-enroll all students from it.`
+        });
+    };
+
+    // Drag and Drop Handlers for Employees
+    const handleEmployeeDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+        dragEmployeeId.current = id;
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleEmployeeDragEnter = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+        dragOverEmployeeId.current = id;
+    };
+
+    const handleEmployeeDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        if (!dragEmployeeId.current || !dragOverEmployeeId.current || dragEmployeeId.current === dragOverEmployeeId.current) {
+            return;
+        }
+        const originalEmployees = [...employees];
+        const dragIndex = originalEmployees.findIndex(emp => emp.id === dragEmployeeId.current);
+        const hoverIndex = originalEmployees.findIndex(emp => emp.id === dragOverEmployeeId.current);
+
+        if (dragIndex === -1 || hoverIndex === -1) { return; }
+
+        const newEmployees = [...originalEmployees];
+        const [draggedItem] = newEmployees.splice(dragIndex, 1);
+        newEmployees.splice(hoverIndex, 0, draggedItem);
+
+        setEmployees(newEmployees);
+
+        try {
+            const orderedEmployeesToUpdate = newEmployees.map((emp, index) => ({
+                id: emp.id,
+                order: index,
+            }));
+            await firestoreService.updateEmployeesOrder(orderedEmployeesToUpdate);
+        } catch (error) {
+            console.error("Failed to update employee order:", error);
+            alert("Could not save the new order. Please try again.");
+            setEmployees(originalEmployees); // Revert on error
+        } finally {
+            dragEmployeeId.current = null;
+            dragOverEmployeeId.current = null;
+        }
+    };
+
+    const handleEmployeeDragEnd = () => {
         dragEmployeeId.current = null;
         dragOverEmployeeId.current = null;
-    }
-  };
-  
-  const handleEmployeeDragEnd = () => {
-    dragEmployeeId.current = null;
-    dragOverEmployeeId.current = null;
-  };
+    };
 
-  const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setCourseDateFilter(prev => ({ ...prev, [name]: value }));
-  };
+    const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setCourseDateFilter(prev => ({ ...prev, [name]: value }));
+    };
 
-  // Filtering Logic
-  const filteredStudents = useMemo(() => students
-    .filter(s => (studentStatusFilter === 'All' || s.status === studentStatusFilter))
-    .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())), [students, searchTerm, studentStatusFilter]);
+    // Filtering Logic
+    const filteredStudents = useMemo(() => students
+        .filter(s => (studentStatusFilter === 'All' || s.status === studentStatusFilter))
+        .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())), [students, searchTerm, studentStatusFilter]);
 
-  const filteredEmployees = useMemo(() => employees
-    .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role.toLowerCase().includes(searchTerm.toLowerCase())), [employees, searchTerm]);
-    
-  const filteredCourses = useMemo(() => courses
-    .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.teacherName.toLowerCase().includes(searchTerm.toLowerCase()))
-    .filter(c => {
-        if (!courseDateFilter.from && !courseDateFilter.to) return true;
-        // Dates are stored as 'YYYY-MM-DD' strings, so direct string comparison works.
-        if (courseDateFilter.from && c.startDate < courseDateFilter.from) {
-            return false;
+    const filteredEmployees = useMemo(() => employees
+        .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role.toLowerCase().includes(searchTerm.toLowerCase())), [employees, searchTerm]);
+
+    const filteredCourses = useMemo(() => courses
+        .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.teacherName.toLowerCase().includes(searchTerm.toLowerCase()))
+        .filter(c => {
+            if (!courseDateFilter.from && !courseDateFilter.to) return true;
+            // Dates are stored as 'YYYY-MM-DD' strings, so direct string comparison works.
+            if (courseDateFilter.from && c.startDate < courseDateFilter.from) {
+                return false;
+            }
+            if (courseDateFilter.to && c.startDate > courseDateFilter.to) {
+                return false;
+            }
+            return true;
+        }), [courses, searchTerm, courseDateFilter]);
+
+
+    const renderHeader = () => {
+        let title = ''; let description = ''; let buttonText = '';
+        switch (activeTab) {
+            case 'students':
+                title = 'Керування студентами'; description = 'Переглядайте, додавайте та редагуйте інформацію про студентів.'; buttonText = 'Додати нового студента'; break;
+            case 'employees':
+                title = 'Керування співробітниками'; description = 'Переглядайте, додавайте та редагуйте інформацію про співробітників.'; buttonText = 'Додати співробітника'; break;
+            case 'courses':
+                title = 'Керування курсами'; description = 'Переглядайте, додавайте та редагуйте інформацію про курси.'; buttonText = 'Додати новий курс'; break;
         }
-        if (courseDateFilter.to && c.startDate > courseDateFilter.to) {
-            return false;
-        }
-        return true;
-    }), [courses, searchTerm, courseDateFilter]);
-
-
-  const renderHeader = () => {
-    let title = ''; let description = ''; let buttonText = '';
-    switch (activeTab) {
-        case 'students':
-            title = 'Керування студентами'; description = 'Переглядайте, додавайте та редагуйте інформацію про студентів.'; buttonText = 'Додати нового студента'; break;
-        case 'employees':
-            title = 'Керування співробітниками'; description = 'Переглядайте, додавайте та редагуйте інформацію про співробітників.'; buttonText = 'Додати співробітника'; break;
-        case 'courses':
-            title = 'Керування курсами'; description = 'Переглядайте, додавайте та редагуйте інформацію про курси.'; buttonText = 'Додати новий курс'; break;
-    }
-    return (
-        <div className="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div>
-                <h1 className="text-2xl font-bold text-white">{title}</h1>
-                <p className="text-sm text-gray-400">{description}</p>
+        return (
+            <div className="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-white">{title}</h1>
+                    <p className="text-sm text-gray-400">{description}</p>
+                </div>
+                <div className="flex gap-2">
+                    {activeTab === 'courses' && <Button variant="secondary" onClick={() => setIsCourseTemplateModalOpen(true)}>Керувати списком</Button>}
+                    <Button variant="primary" onClick={() => {
+                        if (activeTab === 'students') openAddEditStudentModal(null);
+                        if (activeTab === 'courses') openAddEditCourseModal(null);
+                        if (activeTab === 'employees') openAddEditEmployeeModal(null);
+                    }}>{buttonText}</Button>
+                </div>
             </div>
-            <div className="flex gap-2">
-                 {activeTab === 'courses' && <Button variant="secondary" onClick={() => setIsCourseTemplateModalOpen(true)}>Керувати списком</Button>}
-                 <Button variant="primary" onClick={() => {
-                    if (activeTab === 'students') openAddEditStudentModal(null);
-                    if (activeTab === 'courses') openAddEditCourseModal(null);
-                    if (activeTab === 'employees') openAddEditEmployeeModal(null);
-                 }}>{buttonText}</Button>
+        );
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            {isStudentModalOpen && <AddEditStudentModal student={editingStudent} courses={courses} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} currency={currency} />}
+            {isEmployeeModalOpen && <AddEditEmployeeModal employee={editingEmployee} onClose={() => setIsEmployeeModalOpen(false)} onSave={handleSaveEmployee} />}
+            {isCourseModalOpen && <CourseModal course={editingCourse} employees={employees} courseTemplates={courseTemplates} onClose={() => setIsCourseModalOpen(false)} onSave={handleSaveCourse} />}
+            {isNoteModalOpen && noteForStudentId && <NoteModal studentId={noteForStudentId} onClose={() => setIsNoteModalOpen(false)} onSave={handleSaveNote} />}
+            {isPaymentModalOpen && paymentDetails && <PaymentModal {...paymentDetails} onClose={() => setIsPaymentModalOpen(false)} onSave={handleAddPayment} currency={currency} />}
+            {isCourseTemplateModalOpen && <CourseTemplateModal templates={courseTemplates} onClose={async () => { setIsCourseTemplateModalOpen(false); await fetchInitialData(); }} onSave={async () => { }} />}
+
+            <DeleteConfirmationModal
+                isOpen={deleteConfirmation.isOpen}
+                onClose={() => setDeleteConfirmation({ ...deleteConfirmation, isOpen: false })}
+                onConfirm={confirmDelete}
+                title={`Delete ${deleteConfirmation.name}?`}
+                message={deleteConfirmation.type === 'course' ? deleteConfirmation.message : "Are you sure you want to delete this item? This action cannot be undone."}
+            />
+
+            <div className="shrink-0 space-y-4 p-1">
+                {renderHeader()}
+                <div className="flex border-b border-gray-700">
+                    {(['students', 'employees', 'courses'] as Tab[]).map(tab => (
+                        <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 text-sm font-medium capitalize ${activeTab === tab ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mt-4 pr-2">
+                {loading ? <p className="text-center p-8">Loading data...</p> : (
+                    <div>
+                        {activeTab === 'students' && (
+                            <div className="space-y-4">
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <input type="text" placeholder="Search by name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full sm:flex-1 bg-gray-700 p-2 rounded" />
+                                    <select value={studentStatusFilter} onChange={e => setStudentStatusFilter(e.target.value)} className="w-full sm:w-auto bg-gray-700 p-2 rounded">
+                                        <option>All</option><option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
+                                    </select>
+                                </div>
+                                {filteredStudents.map(student => (
+                                    <StudentAccordionItem key={student.id} student={student} isExpanded={expandedId === student.id} onToggle={() => setExpandedId(expandedId === student.id ? null : student.id)} onEdit={openAddEditStudentModal} onDelete={handleDeleteStudent} onAddNote={openNoteModal} onAddPayment={openPaymentModal} currency={currency} />
+                                ))}
+                            </div>
+                        )}
+                        {activeTab === 'employees' && (
+                            <div className="space-y-4">
+                                <input type="text" placeholder="Search by name or role..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 bg-gray-700 p-2 rounded" />
+                                <div onDrop={handleEmployeeDrop} onDragOver={(e) => e.preventDefault()} className="space-y-4">
+                                    {filteredEmployees.map(employee => (
+                                        <div
+                                            key={employee.id}
+                                            draggable
+                                            onDragStart={e => handleEmployeeDragStart(e, employee.id)}
+                                            onDragEnter={e => handleEmployeeDragEnter(e, employee.id)}
+                                            onDragEnd={handleEmployeeDragEnd}
+                                            className="cursor-move"
+                                        >
+                                            <EmployeeAccordionItem
+                                                employee={employee}
+                                                courses={courses}
+                                                isExpanded={expandedId === employee.id}
+                                                onToggle={() => setExpandedId(expandedId === employee.id ? null : employee.id)}
+                                                onEdit={openAddEditEmployeeModal}
+                                                onDelete={handleDeleteEmployee}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'courses' && (
+                            <div className="space-y-4">
+                                <div className="flex flex-col sm:flex-row gap-4 items-center bg-gray-700/50 p-3 rounded-lg">
+                                    <input
+                                        type="text"
+                                        placeholder="Search by name or teacher..."
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        className="w-full sm:flex-1 bg-gray-700 p-2 rounded"
+                                    />
+                                    <div className="flex items-center gap-2 text-sm text-gray-300 w-full sm:w-auto">
+                                        <label htmlFor="date-from" className="whitespace-nowrap">Start Date:</label>
+                                        <input
+                                            type="date"
+                                            id="date-from"
+                                            name="from"
+                                            value={courseDateFilter.from}
+                                            onChange={handleDateFilterChange}
+                                            className="bg-gray-600 p-2 rounded border border-gray-500 w-full"
+                                            aria-label="Filter courses from date"
+                                        />
+                                        <span className="px-1">to</span>
+                                        <input
+                                            type="date"
+                                            id="date-to"
+                                            name="to"
+                                            value={courseDateFilter.to}
+                                            onChange={handleDateFilterChange}
+                                            className="bg-gray-600 p-2 rounded border border-gray-500 w-full"
+                                            aria-label="Filter courses to date"
+                                        />
+                                    </div>
+                                </div>
+                                {filteredCourses.map(course => (
+                                    <CourseAccordionItem key={course.id} course={course} students={students} isExpanded={expandedId === course.id} onToggle={() => setExpandedId(expandedId === course.id ? null : course.id)} onEdit={openAddEditCourseModal} onDelete={handleDeleteCourse} currency={currency} />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
-};
-
-  return (
-    <div className="flex flex-col h-full">
-      {isStudentModalOpen && <AddEditStudentModal student={editingStudent} courses={courses} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} currency={currency} />}
-      {isEmployeeModalOpen && <AddEditEmployeeModal employee={editingEmployee} onClose={() => setIsEmployeeModalOpen(false)} onSave={handleSaveEmployee} />}
-      {isCourseModalOpen && <CourseModal course={editingCourse} employees={employees} courseTemplates={courseTemplates} onClose={() => setIsCourseModalOpen(false)} onSave={handleSaveCourse} />}
-      {isNoteModalOpen && noteForStudentId && <NoteModal studentId={noteForStudentId} onClose={() => setIsNoteModalOpen(false)} onSave={handleSaveNote} />}
-      {isPaymentModalOpen && paymentDetails && <PaymentModal {...paymentDetails} onClose={() => setIsPaymentModalOpen(false)} onSave={handleAddPayment} currency={currency} />}
-      {isCourseTemplateModalOpen && <CourseTemplateModal templates={courseTemplates} onClose={async () => { setIsCourseTemplateModalOpen(false); await fetchInitialData(); }} onSave={async () => {}} />}
-      
-      <div className="shrink-0 space-y-4 p-1">
-          {renderHeader()}
-          <div className="flex border-b border-gray-700">
-            {(['students', 'employees', 'courses'] as Tab[]).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 text-sm font-medium capitalize ${activeTab === tab ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'}`}>
-                {tab}
-              </button>
-            ))}
-          </div>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto mt-4 pr-2">
-        {loading ? <p className="text-center p-8">Loading data...</p> : (
-            <div>
-                {activeTab === 'students' && (
-                    <div className="space-y-4">
-                        <div className="flex flex-col sm:flex-row gap-4">
-                            <input type="text" placeholder="Search by name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full sm:flex-1 bg-gray-700 p-2 rounded" />
-                            <select value={studentStatusFilter} onChange={e => setStudentStatusFilter(e.target.value)} className="w-full sm:w-auto bg-gray-700 p-2 rounded">
-                                <option>All</option><option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
-                            </select>
-                        </div>
-                        {filteredStudents.map(student => (
-                            <StudentAccordionItem key={student.id} student={student} isExpanded={expandedId === student.id} onToggle={() => setExpandedId(expandedId === student.id ? null : student.id)} onEdit={openAddEditStudentModal} onDelete={handleDeleteStudent} onAddNote={openNoteModal} onAddPayment={openPaymentModal} currency={currency} />
-                        ))}
-                    </div>
-                )}
-                {activeTab === 'employees' && (
-                    <div className="space-y-4">
-                        <input type="text" placeholder="Search by name or role..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 bg-gray-700 p-2 rounded" />
-                         <div onDrop={handleEmployeeDrop} onDragOver={(e) => e.preventDefault()} className="space-y-4">
-                            {filteredEmployees.map(employee => (
-                                <div
-                                    key={employee.id}
-                                    draggable
-                                    onDragStart={e => handleEmployeeDragStart(e, employee.id)}
-                                    onDragEnter={e => handleEmployeeDragEnter(e, employee.id)}
-                                    onDragEnd={handleEmployeeDragEnd}
-                                    className="cursor-move"
-                                >
-                                    <EmployeeAccordionItem
-                                        employee={employee}
-                                        courses={courses}
-                                        isExpanded={expandedId === employee.id}
-                                        onToggle={() => setExpandedId(expandedId === employee.id ? null : employee.id)}
-                                        onEdit={openAddEditEmployeeModal}
-                                        onDelete={handleDeleteEmployee}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {activeTab === 'courses' && (
-                    <div className="space-y-4">
-                         <div className="flex flex-col sm:flex-row gap-4 items-center bg-gray-700/50 p-3 rounded-lg">
-                            <input 
-                                type="text" 
-                                placeholder="Search by name or teacher..." 
-                                value={searchTerm} 
-                                onChange={e => setSearchTerm(e.target.value)} 
-                                className="w-full sm:flex-1 bg-gray-700 p-2 rounded" 
-                            />
-                            <div className="flex items-center gap-2 text-sm text-gray-300 w-full sm:w-auto">
-                                <label htmlFor="date-from" className="whitespace-nowrap">Start Date:</label>
-                                <input 
-                                    type="date" 
-                                    id="date-from"
-                                    name="from"
-                                    value={courseDateFilter.from}
-                                    onChange={handleDateFilterChange}
-                                    className="bg-gray-600 p-2 rounded border border-gray-500 w-full"
-                                    aria-label="Filter courses from date"
-                                />
-                                <span className="px-1">to</span>
-                                <input 
-                                    type="date" 
-                                    id="date-to"
-                                    name="to"
-                                    value={courseDateFilter.to}
-                                    onChange={handleDateFilterChange}
-                                    className="bg-gray-600 p-2 rounded border border-gray-500 w-full"
-                                    aria-label="Filter courses to date"
-                                />
-                            </div>
-                        </div>
-                        {filteredCourses.map(course => (
-                            <CourseAccordionItem key={course.id} course={course} students={students} isExpanded={expandedId === course.id} onToggle={() => setExpandedId(expandedId === course.id ? null : course.id)} onEdit={openAddEditCourseModal} onDelete={handleDeleteCourse} currency={currency}/>
-                        ))}
-                    </div>
-                )}
-            </div>
-        )}
-      </div>
-    </div>
-  );
 };
 
 export default Training;

@@ -1,0 +1,232 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================
+    // Helper Functions
+    // ========================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Get user role from users collection
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Check if user is employee
+    function isEmployee() {
+      return isAuthenticated() && getUserRole() == 'employee';
+    }
+    
+    // Check if user is student
+    function isStudent() {
+      return isAuthenticated() && getUserRole() == 'student';
+    }
+    
+    // Check if user is admin or employee
+    function isStaff() {
+      return isAdmin() || isEmployee();
+    }
+    
+    // ========================================
+    // Users Collection
+    // ========================================
+    match /users/{userId} {
+      // Users can read their own profile
+      // Admin can read all profiles
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      
+      // Only admin can create/update users
+      allow create, update: if isAdmin();
+      
+      // Only admin can delete users
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Students Collection
+    // ========================================
+    match /students/{studentId} {
+      // Admin sees all students
+      // Employee sees only their assigned students
+      // Student sees only themselves (if linked)
+      allow read: if isAdmin() || 
+        (isEmployee() && resource.data.assignedEmployeeId == request.auth.uid) ||
+        (isStudent() && resource.data.userId == request.auth.uid);
+      
+      // Admin and Employee can create students
+      allow create: if isStaff();
+      
+      // Admin can update any student
+      // Employee can update only their assigned students
+      allow update: if isAdmin() || 
+        (isEmployee() && resource.data.assignedEmployeeId == request.auth.uid);
+      
+      // Only admin can delete students
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Tasks Collection
+    // ========================================
+    match /tasks/{taskId} {
+      // Admin sees all tasks
+      // Employee sees only their tasks
+      allow read: if isAdmin() || 
+        (isEmployee() && resource.data.assigneeId == request.auth.uid);
+      
+      // Admin and Employee can create tasks
+      allow create: if isStaff();
+      
+      // Admin can update any task
+      // Employee can update only their tasks
+      allow update: if isAdmin() || 
+        (isEmployee() && resource.data.assigneeId == request.auth.uid);
+      
+      // Only admin can delete tasks
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Income Collection
+    // ========================================
+    match /income/{incomeId} {
+      // Admin sees all income
+      // Employee sees only their income
+      allow read: if isAdmin() || 
+        (isEmployee() && resource.data.employeeId == request.auth.uid);
+      
+      // Admin and Employee can create income
+      allow create: if isStaff();
+      
+      // Admin can update any income
+      // Employee can update only their income
+      allow update: if isAdmin() || 
+        (isEmployee() && resource.data.employeeId == request.auth.uid);
+      
+      // Only admin can delete income
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Expenses Collection
+    // ========================================
+    match /expenses/{expenseId} {
+      // Admin sees all expenses
+      // Employee sees only their expenses
+      allow read: if isAdmin() || 
+        (isEmployee() && resource.data.employeeId == request.auth.uid);
+      
+      // Admin and Employee can create expenses
+      allow create: if isStaff();
+      
+      // Admin can update any expense
+      // Employee can update only their expense
+      allow update: if isAdmin() || 
+        (isEmployee() && resource.data.employeeId == request.auth.uid);
+      
+      // Only admin can delete expenses
+      allow delete: if isAdmin();
+    }
+    
+    // ========================================
+    // Courses Collection
+    // ========================================
+    match /courses/{courseId} {
+      // All authenticated users can read courses
+      allow read: if isAuthenticated();
+      
+      // Only admin can create/update/delete courses
+      allow create, update, delete: if isAdmin();
+    }
+    
+
+    // ========================================
+    // Employees Collection (Public Roster)
+    // ========================================
+    match /employees/{employeeId} {
+      // All authenticated users can read the roster (needed for auth checks)
+      allow read: if isAuthenticated();
+      
+      // Only admin can manage employees
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ========================================
+    // Course Templates
+    // ========================================
+    match /courseTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    // ========================================
+    // Student Sources
+    // ========================================
+    match /studentSources/{sourceId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    // ========================================
+    // Advisor Suggestions
+    // ========================================
+    match /advisorSuggestions/{suggestionId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+
+    // ========================================
+    // Course Preparations
+    // ========================================
+    match /coursePreparations/{preparationId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+    
+    // ========================================
+    // Expense Categories
+    // ========================================
+    match /expenseCategories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow write: if isStaff();
+    }
+    
+    // ========================================
+    // RAG Knowledge & Dynamic Memory
+    // ========================================
+    match /ragKnowledge/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /dynamicMemory/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ========================================
+    // Enrollment Records
+    // ========================================
+    match /enrollments/{enrollmentId} {
+      // Admin sees all enrollments
+      // Employee sees their students' enrollments
+      // Student sees their own enrollments
+      allow read: if isAdmin() || 
+        (isEmployee() && resource.data.employeeId == request.auth.uid) ||
+        (isStudent() && resource.data.studentUserId == request.auth.uid);
+      
+      // Admin and Employee can manage enrollments
+      allow create, update: if isStaff();
+      
+      // Only admin can delete enrollments
+      allow delete: if isAdmin();
+    }
+  }
+}

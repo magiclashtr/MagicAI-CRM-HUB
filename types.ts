@@ -118,7 +118,7 @@ export interface Employee {
 
 
 export interface Task {
-  id:string;
+  id: string;
   title: string;
   details: string;
   assigneeId: string;
@@ -132,11 +132,11 @@ export interface AdvisorSuggestion {
   id: string;
   title: string;
   description: string;
-  type: 'student' | 'finance' | 'course';
+  type: 'student' | 'finance' | 'course' | 'task';
   // New fields for proactive actions
   studentId?: string;
-  courseName?: string;
-  actionType?: 'payment_reminder' | 'follow_up' | 'general';
+  courseId?: string;
+  actionType?: 'payment_reminder' | 'follow_up' | 'general' | 'notification';
 }
 
 export interface Expense {
@@ -167,7 +167,7 @@ export interface ChecklistItem {
 export interface CoursePreparation {
   id: string;
   courseId: string;
-  courseName:string;
+  courseName: string;
   startDate: string;
   teacherName: string;
   type: 'Ochnyy' | 'Specialized' | 'Online' | 'Workshop';
@@ -204,4 +204,4 @@ export interface StudentDetailsResponse {
 
 // FIX: Explicitly export an empty object to ensure this file is treated as a module,
 // which resolves issues with global type augmentations.
-export {};
+export { };

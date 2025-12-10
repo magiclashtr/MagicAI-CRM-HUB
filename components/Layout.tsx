@@ -11,10 +11,12 @@ interface LayoutProps {
   setCurrency: (currency: Currency) => void;
   // FIX: Updated the type of 'onVoiceCommand' to match the synchronous 'toggleChat' function passed from App.
   onVoiceCommand: () => void;
-  onToggleChat: () => void; // New prop
+  onToggleChat: () => void;
+  isGuest?: boolean;
+  onRegister?: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeItem, setActiveItem, currency, setCurrency, onVoiceCommand, onToggleChat }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeItem, setActiveItem, currency, setCurrency, onVoiceCommand, onToggleChat, isGuest, onRegister }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
@@ -32,7 +34,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeItem, setActiveItem, cu
           currency={currency}
           setCurrency={setCurrency}
           onMenuClick={() => setIsSidebarOpen(true)}
-          onVoiceCommand={onVoiceCommand} // This will now toggle the chat
+          onVoiceCommand={onVoiceCommand}
+          isGuest={isGuest}
+          onRegister={onRegister}
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto">
           {children}

@@ -1,6 +1,6 @@
 // FIX: Moved the 'Student' type import from '@google/genai' to the local '../types' file, as it is a custom application type and not exported by the Gemini library.
 import { GoogleGenAI, GenerateContentResponse, GenerateContentParameters, Modality, FunctionDeclaration, FunctionCall, LiveServerMessage, Part } from "@google/genai";
-import { GeminiAnalysisResult, UserRole, Student, Course, Income, Task, AdvisorSuggestion } from '../types';
+import { GeminiAnalysisResult, UserRole, Student, Course, Income, Task, AdvisorSuggestion, Employee, Expense } from '../types';
 import { Type } from "@google/genai";
 import { firestoreService } from './firestoreService'; // Import firestoreService for RAG
 
@@ -74,22 +74,22 @@ function createAudioBlob(data: Float32Array): { data: string; mimeType: string }
 }
 
 const getGeminiInstance = () => {
-  let apiKey = '';
-  try {
-    // Safely attempt to access process.env.API_KEY. 
-    // In some browser environments (like Vite without specific config), 'process' might be undefined, causing a crash.
-    apiKey = process.env.API_KEY || '';
-  } catch (e) {
-    console.warn("process.env is not defined in this environment.");
+  // Use Vite's import.meta.env for environment variables
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+
+  // Validate API key format (should start with 'AIza')
+  if (!apiKey) {
+    console.error('Gemini API Key is not set.');
+    throw new Error(
+      'Gemini API Key is not set. Please add VITE_GEMINI_API_KEY to your .env.local file.'
+    );
   }
 
-  // Ensure API key is available. If not, prompt user to select it.
-  if (!apiKey) {
-    console.error("Gemini API Key is not set.");
-    // In a real app, you'd show a UI error or redirect to a key setup page.
-    throw new Error("Gemini API Key is not set. Please ensure process.env.API_KEY is configured in your build settings.");
+  if (!apiKey.startsWith('AIza') || apiKey.length < 30) {
+    console.warn('Gemini API Key format may be invalid. Expected format: AIza...');
   }
-  return new GoogleGenAI({ apiKey: apiKey });
+
+  return new GoogleGenAI({ apiKey });
 };
 
 export const geminiService = {
@@ -133,8 +133,8 @@ export const geminiService = {
       }
 
       const contentsParam = (contentPartsArray.length === 1 && !image)
-          ? prompt
-          : { parts: contentPartsArray };
+        ? prompt
+        : { parts: contentPartsArray };
 
       const response: GenerateContentResponse = await ai.models.generateContent({
         model,
@@ -157,20 +157,20 @@ export const geminiService = {
       throw error;
     }
   },
-  
+
   async generateTextWithRAG(
     prompt: string
   ): Promise<string> {
     try {
       const ragContext = await firestoreService.fetchRAGKnowledge();
       const fullPrompt = `${ragContext}\n--- User Query ---\n${prompt}`;
-      
+
       const ai = getGeminiInstance();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: fullPrompt,
         config: {
-            systemInstruction: 'You are an AI assistant for a CRM. Answer the user\'s query based on the provided knowledge base context. If the information is not in the context, say you don\'t have that information.'
+          systemInstruction: 'You are an AI assistant for a CRM. Answer the user\'s query based on the provided knowledge base context. If the information is not in the context, say you don\'t have that information.'
         }
       });
 
@@ -206,7 +206,7 @@ export const geminiService = {
       config,
     });
 
-    const textStream = (async function*() {
+    const textStream = (async function* () {
       for await (const chunk of response) {
         yield chunk.text;
       }
@@ -326,28 +326,95 @@ export const geminiService = {
     }
   },
 
+  async getEmployeeAdvice(employee: Employee): Promise<string> {
+    try {
+      const ai = getGeminiInstance();
+      const prompt = `
+        You are an expert HR manager for a beauty academy.
+        Analyze the employee's profile and provide a concise, actionable recommendation for the manager.
+        The recommendation should be in Russian or Ukrainian.
+
+        Employee Profile:
+        - Name: ${employee.name}
+        - Role: ${employee.role}
+        - Salary: ${employee.salary} USD
+        - Status: ${employee.status}
+        - Specializations: ${employee.specializations.join(', ')}
+
+        Based on this, what is the best next step? (e.g., suggest a promotion, training, performance review, or simply a word of appreciation).
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      return response.text;
+    } catch (error) {
+      console.error('Error getting employee advice:', error);
+      throw error;
+    }
+  },
+
+  async getCourseAdvice(course: Course, students: Student[]): Promise<string> {
+    try {
+      const ai = getGeminiInstance();
+      const enrolledCount = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id)).length;
+      const totalRevenue = students.reduce((acc, s) => {
+        const enrollment = s.enrolledCourses.find(ec => ec.courseId === course.id);
+        return acc + (enrollment ? Number(enrollment.pricePaid) : 0);
+      }, 0);
+
+      const prompt = `
+        You are an expert Education Manager for a beauty academy.
+        Analyze the course performance and provide a concise recommendation.
+        The recommendation should be in Russian or Ukrainian.
+
+        Course Profile:
+        - Name: ${course.name}
+        - Teacher: ${course.teacherName}
+        - Price: ${course.price} USD
+        - Start Date: ${course.startDate}
+        - Enrolled Students: ${enrolledCount}
+        - Total Revenue Generated: ${totalRevenue} USD
+
+        Based on this, suggest an action (e.g., discount to boost sales, increase marketing, repeat the course if successful, or cancel if low interest).
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      return response.text;
+    } catch (error) {
+      console.error('Error getting course advice:', error);
+      throw error;
+    }
+  },
+
   async generateCourseDescription(courseName: string): Promise<string> {
-      try {
-          const ai = getGeminiInstance();
-          const prompt = `Generate a compelling, concise, and attractive course description in Russian for a beauty academy course named "${courseName}". Focus on the benefits for the student. Keep it under 500 characters.`;
+    try {
+      const ai = getGeminiInstance();
+      const prompt = `Generate a compelling, concise, and attractive course description in Russian for a beauty academy course named "${courseName}". Focus on the benefits for the student. Keep it under 500 characters.`;
 
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: prompt,
-          });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
 
-          return response.text.trim();
-      } catch (error) {
-          console.error('Error generating course description:', error);
-          throw error;
-      }
+      return response.text.trim();
+    } catch (error) {
+      console.error('Error generating course description:', error);
+      throw error;
+    }
   },
 
   async generateEmployeeBio(name: string, role: string, specializations: string[]): Promise<string> {
     try {
-        const ai = getGeminiInstance();
-        const safeSpecializations = specializations || [];
-        const prompt = `Generate a short, professional, and engaging biography in Russian for a beauty academy employee.
+      const ai = getGeminiInstance();
+      const safeSpecializations = specializations || [];
+      const prompt = `Generate a short, professional, and engaging biography in Russian for a beauty academy employee.
         
         Name: ${name}
         Role: ${role}
@@ -355,34 +422,34 @@ export const geminiService = {
 
         Keep it concise (around 2-3 sentences). Highlight their expertise and passion.`;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
 
-        return response.text.trim();
+      return response.text.trim();
     } catch (error) {
-        console.error('Error generating employee bio:', error);
-        throw error;
+      console.error('Error generating employee bio:', error);
+      throw error;
     }
-},
+  },
 
   async generateTaskDescription(taskTitle: string): Promise<string> {
     try {
-        const ai = getGeminiInstance();
-        const prompt = `Generate a detailed and actionable description in Ukrainian for a task with the title "${taskTitle}".
+      const ai = getGeminiInstance();
+      const prompt = `Generate a detailed and actionable description in Ukrainian for a task with the title "${taskTitle}".
         Focus on what needs to be done, potential sub-steps, and the purpose of the task.
         Keep it concise, yet informative (around 3-5 sentences).`;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
 
-        return response.text.trim();
+      return response.text.trim();
     } catch (error) {
-        console.error('Error generating task description:', error);
-        throw error;
+      console.error('Error generating task description:', error);
+      throw error;
     }
   },
 
@@ -401,15 +468,15 @@ export const geminiService = {
       Expense Description: "${description}"
       
       Available Categories: ${categories.join(', ')}`;
-      
+
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-            systemInstruction: "You are an expert accountant. Your task is to categorize expenses accurately based on the provided list. Only return the category name."
+          systemInstruction: "You are an expert accountant. Your task is to categorize expenses accurately based on the provided list. Only return the category name."
         }
       });
-      
+
       const suggestedCategory = response.text.trim();
 
       // Validate if the response is one of the allowed categories
@@ -482,28 +549,28 @@ export const geminiService = {
   // FIX: Added textToSpeech method for GenAIMagic view.
   async textToSpeech(text: string): Promise<string> { // returns base64 string
     try {
-        const ai = getGeminiInstance();
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-preview-tts",
-            contents: [{ parts: [{ text }] }],
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: {
-                        prebuiltVoiceConfig: { voiceName: 'Kore' },
-                    },
-                },
+      const ai = getGeminiInstance();
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
             },
-        });
+          },
+        },
+      });
 
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) {
-            throw new Error("No audio data received from Gemini TTS.");
-        }
-        return base64Audio;
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Audio) {
+        throw new Error("No audio data received from Gemini TTS.");
+      }
+      return base64Audio;
     } catch (error) {
-        console.error('Error in Gemini text-to-speech:', error);
-        throw error;
+      console.error('Error in Gemini text-to-speech:', error);
+      throw error;
     }
   },
 
@@ -529,8 +596,8 @@ export const geminiService = {
       }
 
       const contentsParam = (contentPartsArray.length === 1 && !image)
-          ? prompt
-          : { parts: contentPartsArray };
+        ? prompt
+        : { parts: contentPartsArray };
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
@@ -570,12 +637,13 @@ export const geminiService = {
     }
 
     const ai = getGeminiInstance();
+    console.log('[Mira Live] Attempting to connect to Gemini Live API...');
     let nextStartTime = 0;
     const sources = new Set<AudioBufferSourceNode>();
 
     // This needs to be a promise to avoid race conditions with audio streaming
     const sessionPromise = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+      model: 'gemini-2.0-flash-live-001',
       callbacks: {
         ...callbacks,
         onmessage: async (message: LiveServerMessage) => {
@@ -628,8 +696,7 @@ export const geminiService = {
         },
         systemInstruction: systemInstruction,
         tools: functions ? [{ functionDeclarations: functions }] : undefined,
-        inputAudioTranscription: {}, // Enable transcription for user input audio.
-        outputAudioTranscription: {}, // Enable transcription for model output audio.
+        // Transcription not supported by gemini-2.0-flash-live-001
       },
     });
 
@@ -702,39 +769,157 @@ export const geminiService = {
         }
       `;
 
-       const response = await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        id: { type: Type.STRING },
-                        title: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        type: { type: Type.STRING, enum: ['student', 'finance', 'course'] },
-                        studentId: { type: Type.STRING },
-                        courseName: { type: Type.STRING },
-                        actionType: { type: Type.STRING, enum: ['payment_reminder", "follow_up", "general'] }
-                    },
-                    required: ['id', 'title', 'description', 'type']
-                }
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                type: { type: Type.STRING, enum: ['student', 'finance', 'course'] },
+                studentId: { type: Type.STRING },
+                courseName: { type: Type.STRING },
+                actionType: { type: Type.STRING, enum: ['payment_reminder', 'follow_up', 'general'] }
+              },
+              required: ['id', 'title', 'description', 'type']
             }
+          }
         }
       });
 
       const text = response.text;
       if (!text) return [];
-      
+
       const suggestions = JSON.parse(text) as AdvisorSuggestion[];
       // Ensure unique IDs
       return suggestions.map((s, i) => ({ ...s, id: s.id || `ai-gen-${Date.now()}-${i}` }));
 
     } catch (error) {
       console.error('Error generating advisor suggestions:', error);
+      return [];
+    }
+  },
+
+  async generateRevenueForecast(income: Income[], expenses: Expense[]): Promise<string> {
+    try {
+      const ai = getGeminiInstance();
+
+      // aggregare data by month for the last 6 months
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const recentIncome = income.filter(i => new Date(i.date) >= sixMonthsAgo);
+      const recentExpenses = expenses.filter(e => new Date(e.date) >= sixMonthsAgo);
+
+      const prompt = `
+        You are an expert financial analyst for a business.
+        Analyze the provided financial data for the last 6 months and generate a forecast for the next month.
+        The response should be in Ukrainian.
+
+        Financial Summary (Last 6 Months):
+        - Total Income Entries: ${recentIncome.length}
+        - Total Income Value: ${recentIncome.reduce((sum, i) => sum + Number(i.amount), 0).toFixed(2)}
+        - Total Expense Entries: ${recentExpenses.length}
+        - Total Expense Value: ${recentExpenses.reduce((sum, e) => sum + (Number(e.unitPrice) * Number(e.quantity)), 0).toFixed(2)}
+        - Income Trend (Dates): ${recentIncome.map(i => i.date).sort().join(', ')}
+
+        Based on this, provide:
+        1. A brief analysis of the current trend (Growth, Decline, Stable).
+        2. A predicted revenue range for next month.
+        3. One key recommendation to improve profitability.
+        
+        Keep the response professional but concise (under 500 characters).
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      return response.text;
+    } catch (error) {
+      console.error('Error generating revenue forecast:', error);
+      throw error;
+    }
+  },
+
+  async prioritizeTask(title: string, details: string, dueDate: string): Promise<{ priority: 'High' | 'Medium' | 'Low', reason: string }> {
+    try {
+      const ai = getGeminiInstance();
+      const prompt = `
+        You are an expert Project Manager.
+        Analyze the following task and assign a priority level (High, Medium, Low) based on urgency and importance.
+        Also provide a short reason (1 sentence) in Ukrainian.
+
+        Task Title: ${title}
+        Details: ${details}
+        Due Date: ${dueDate}
+        Current Date: ${new Date().toISOString().split('T')[0]}
+
+        Return ONLY a JSON object:
+        { "priority": "High" | "Medium" | "Low", "reason": "string" }
+      `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              priority: { type: Type.STRING, enum: ['High', 'Medium', 'Low'] },
+              reason: { type: Type.STRING }
+            },
+            required: ['priority', 'reason']
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) throw new Error("No response from AI");
+      return JSON.parse(text) as { priority: 'High' | 'Medium' | 'Low', reason: string };
+
+    } catch (error) {
+      console.error('Error prioritizing task:', error);
+      // Default fallback
+      return { priority: 'Medium', reason: 'AI prioritization failed, defaulting to Medium.' };
+    }
+  },
+
+  async suggestTaskSplit(title: string): Promise<string[]> {
+    try {
+      const ai = getGeminiInstance();
+      const prompt = `
+            You are an expert Task Coordinator.
+            Break down the complex task titled "${title}" into 3-5 smaller, actionable sub-tasks.
+            Return ONLY a JSON array of strings in Ukrainian.
+        `;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      });
+
+      const text = response.text;
+      if (!text) return [];
+      return JSON.parse(text) as string[];
+
+    } catch (error) {
+      console.error('Error suggested task split:', error);
       return [];
     }
   },
