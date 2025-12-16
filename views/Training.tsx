@@ -517,32 +517,37 @@ const CourseModal: React.FC<{
 const PaymentModal: React.FC<{
     student: Student;
     course: EnrolledCourse;
+    initialPayment?: PaymentHistory; // NEW: For editing
     onClose: () => void;
-    onSave: (amount: number, date: string, method: string) => Promise<void>;
+    onSave: (amount: number, date: string, method: string, paymentId?: string) => Promise<void>;
     currency: Currency;
-}> = ({ student, course, onClose, onSave, currency }) => {
-    const [amount, setAmount] = useState('');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [method, setMethod] = useState('Cash');
+}> = ({ student, course, initialPayment, onClose, onSave, currency }) => {
+    // If editing, defaults to stored value.
+    const [amount, setAmount] = useState(initialPayment ? initialPayment.amount.toString() : '');
+    const [date, setDate] = useState(initialPayment ? initialPayment.date : new Date().toISOString().split('T')[0]);
+    const [method, setMethod] = useState(initialPayment ? initialPayment.method : 'Cash');
     const [paymentCurrency, setPaymentCurrency] = useState<Currency>(currency);
+
+    // If editing and in TRY mode, show approximate TRY value
+    useEffect(() => {
+        if (initialPayment && currency === 'TRY') {
+            setAmount((initialPayment.amount * 32.83).toFixed(2));
+        }
+    }, [initialPayment, currency]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Convert to USD if paid in TRY for storage consistency, or keep as is if logic dictates.
-        // The requirement is: main currency is TRY, USD is indicator/calc.
-        // We will pass the raw amount and let the handler deal with conversion/storage logic based on the selected paymentCurrency.
-        // For simplicity in this step, let's assume we store in USD.
         let finalAmount = Number(amount);
         if (paymentCurrency === 'TRY') {
-            finalAmount = finalAmount / 32.83; // Approx rate, ideally use constant
+            finalAmount = finalAmount / 32.83;
         }
-        await onSave(finalAmount, date, method);
+        await onSave(finalAmount, date, method, initialPayment?.id);
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 p-8 rounded-lg w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-4">Add Payment</h2>
+                <h2 className="text-2xl font-bold mb-4">{initialPayment ? 'Edit Payment' : 'Add Payment'}</h2>
                 <p className="text-gray-400 mb-6">{student.name} - {course.courseName}</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
@@ -592,7 +597,7 @@ const PaymentModal: React.FC<{
                     </div>
                     <div className="flex justify-end gap-3 mt-6">
                         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button variant="primary" type="submit">Confirm Payment</Button>
+                        <Button variant="primary" type="submit">Save</Button>
                     </div>
                 </form>
             </div>
