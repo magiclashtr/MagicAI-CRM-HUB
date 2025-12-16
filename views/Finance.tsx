@@ -123,14 +123,14 @@ const ExpenseModal: React.FC<{
     }
     onSave(formData);
   };
-  
+
   const handleSuggestDetails = async () => {
     setIsSuggestingDetails(true);
     try {
       const currentCategory = categories.find(c => c.name === formData.category);
       const expenseNames = currentCategory?.names || [];
       const result = await geminiService.suggestExpenseDetails(formData.category, formData.notes, expenseNames);
-      
+
       if (result) {
         const { suggestedName, suggestedUnit } = result;
         setFormData(prev => ({ ...prev, name: suggestedName, unit: suggestedUnit }));
@@ -147,48 +147,48 @@ const ExpenseModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-        <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6">{expense ? 'Edit Expense' : 'Add New Expense'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required />
-                    <select name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-                        {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
-                    </select>
-                </div>
-                <div className="relative">
-                     <label className="block text-sm font-medium text-gray-400 mb-1">
-                        Category {isSuggesting && <span className="text-indigo-400 text-xs animate-pulse">(AI thinking...)</span>}
-                     </label>
-                     <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
-                         {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                     </select>
-                </div>
-                <div>
-                     <label className="block text-sm font-medium text-gray-400 mb-1">Expense Name</label>
-                    {expenseNames.length > 0 ? (
-                         <select name="name" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-                             {expenseNames.map(name => <option key={name} value={name}>{name}</option>)}
-                         </select>
-                     ) : (
-                         <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Expense Name" className="w-full bg-gray-700 p-3 rounded" required />
-                     )}
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                     <input type="number" name="quantity" value={formData.quantity} onChange={handleChange} placeholder="Quantity" className="bg-gray-700 p-3 rounded" min="1" step="1" required />
-                     <input name="unit" value={formData.unit} onChange={handleChange} placeholder="Unit (e.g., шт, кг, услуга)" className="bg-gray-700 p-3 rounded" />
-                     <input type="number" name="unitPrice" value={formData.unitPrice} onChange={handleChange} placeholder="Unit Price" className="bg-gray-700 p-3 rounded" min="0.01" step="0.01" required />
-                </div>
-                <div>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} placeholder="Notes" className="w-full bg-gray-700 p-3 rounded h-20" />
-                    <Button type="button" variant="outline" size="sm" onClick={handleSuggestDetails} isLoading={isSuggestingDetails}>Suggest Details (AI)</Button>
-                </div>
-                <div className="flex justify-end space-x-4 pt-4">
-                    <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button type="submit" variant="primary">Save Expense</Button>
-                </div>
-            </form>
-        </div>
+      <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-6">{expense ? 'Edit Expense' : 'Add New Expense'}</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="date" name="date" value={formData.date} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required />
+            <select name="paymentMethod" value={formData.paymentMethod} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+              {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <label className="block text-sm font-medium text-gray-400 mb-1">
+              Category {isSuggesting && <span className="text-indigo-400 text-xs animate-pulse">(AI thinking...)</span>}
+            </label>
+            <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
+              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-1">Expense Name</label>
+            {expenseNames.length > 0 ? (
+              <select name="name" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                {expenseNames.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            ) : (
+              <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Expense Name" className="w-full bg-gray-700 p-3 rounded" required />
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <input type="number" name="quantity" value={formData.quantity} onChange={handleChange} placeholder="Quantity" className="bg-gray-700 p-3 rounded" min="1" step="1" required />
+            <input name="unit" value={formData.unit} onChange={handleChange} placeholder="Unit (e.g., шт, кг, услуга)" className="bg-gray-700 p-3 rounded" />
+            <input type="number" name="unitPrice" value={formData.unitPrice} onChange={handleChange} placeholder="Unit Price" className="bg-gray-700 p-3 rounded" min="0.01" step="0.01" required />
+          </div>
+          <div>
+            <textarea name="notes" value={formData.notes} onChange={handleChange} placeholder="Notes" className="w-full bg-gray-700 p-3 rounded h-20" />
+            <Button type="button" variant="outline" size="sm" onClick={handleSuggestDetails} isLoading={isSuggestingDetails}>Suggest Details (AI)</Button>
+          </div>
+          <div className="flex justify-end space-x-4 pt-4">
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary">Save Expense</Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
@@ -203,7 +203,7 @@ const CategoryModal: React.FC<{
   const handleCategoryNameChange = (id: string, newName: string) => {
     setLocalCategories(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c));
   };
-  
+
   const handleExpenseNamesChange = (id: string, newNames: string) => {
     setLocalCategories(prev => prev.map(c => c.id === id ? { ...c, names: newNames.split(',').map(n => n.trim()) } : c));
   };
@@ -339,14 +339,14 @@ const Finance: React.FC<{ currency: Currency }> = ({ currency }) => {
     }
     // Handle deletions if necessary (omitted for brevity in this simplified block, assumes mostly additions/updates)
     // A robust implementation would handle deletions.
-    
+
     await fetchData();
     setIsCategoryModalOpen(false);
   };
-  
+
   const openAddIncome = () => { setEditingIncome(null); setIsIncomeModalOpen(true); };
   const openEditIncome = (i: Income) => { setEditingIncome(i); setIsIncomeModalOpen(true); };
-  
+
   const openAddExpense = () => { setEditingExpense(null); setIsExpenseModalOpen(true); };
   const openEditExpense = (e: Expense) => { setEditingExpense(e); setIsExpenseModalOpen(true); };
 
@@ -359,58 +359,80 @@ const Finance: React.FC<{ currency: Currency }> = ({ currency }) => {
       <div className="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-2xl font-bold text-white">Фінанси</h1>
         <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setIsCategoryModalOpen(true)}>Manage Categories</Button>
-            <Button variant="primary" onClick={openAddIncome}>Add Income</Button>
-            <Button variant="danger" onClick={openAddExpense}>Add Expense</Button>
+          <Button variant="secondary" onClick={async () => {
+            if (!window.confirm("Synchronize all legacy payments?")) return;
+            try {
+              const res = await firestoreService.syncLegacyPayments();
+              alert(res.message);
+              window.location.reload(); // Refresh to show new income
+            } catch (e) { console.error(e); alert("Sync failed"); }
+          }}>Sync Data</Button>
+          <Button variant="secondary" onClick={() => setIsCategoryModalOpen(true)}>Manage Categories</Button>
+          <Button variant="primary" onClick={openAddIncome}>Add Income</Button>
+          <Button variant="danger" onClick={openAddExpense}>Add Expense</Button>
         </div>
       </div>
-      
+
       {/* Overview Reports */}
       <FinancialReports currency={currency} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Income List */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-bold mb-4 text-white">Recent Income</h3>
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-                {income.length > 0 ? income.sort((a,b) => b.date.localeCompare(a.date)).map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded hover:bg-gray-700">
-                        <div>
-                            <p className="font-semibold text-white">{item.description}</p>
-                            <p className="text-sm text-gray-400">{item.date}</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                             <span className="text-green-400 font-bold">{formatCurrency(Number(item.amount), currency)}</span>
-                             <div className="flex gap-1">
-                                <button onClick={() => openEditIncome(item)} className="text-gray-400 hover:text-white p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg></button>
-                                <button onClick={() => handleDeleteIncome(item.id)} className="text-red-400 hover:text-red-300 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.067-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button>
-                             </div>
-                        </div>
+          <h3 className="text-xl font-bold mb-4 text-white">Recent Income</h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {income.length > 0 ? income.sort((a, b) => b.date.localeCompare(a.date)).map(item => (
+              <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded hover:bg-gray-700">
+                <div>
+                  <p className="font-semibold text-white">{item.description}</p>
+                  <p className="text-sm text-gray-400">{item.date}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-green-400 font-bold">{formatCurrency(Number(item.amount), currency)}</span>
+                      <span className="text-xs text-gray-500">
+                        ({formatCurrency(Number(item.amount), currency === 'USD' ? 'TRY' : 'USD')})
+                      </span>
                     </div>
-                )) : <p className="text-gray-500 italic">No income records.</p>}
-            </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEditIncome(item)} className="text-gray-400 hover:text-white p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg></button>
+                    <button onClick={() => handleDeleteIncome(item.id)} className="text-red-400 hover:text-red-300 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.067-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button>
+                  </div>
+                </div>
+              </div>
+            )) : <p className="text-gray-500 italic">No income records.</p>}
+          </div>
         </div>
 
         {/* Expense List */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-md">
-            <h3 className="text-xl font-bold mb-4 text-white">Recent Expenses</h3>
-             <div className="space-y-2 max-h-96 overflow-y-auto">
-                {expenses.length > 0 ? expenses.sort((a,b) => b.date.localeCompare(a.date)).map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded hover:bg-gray-700">
-                        <div>
-                            <p className="font-semibold text-white">{item.name}</p>
-                            <p className="text-xs text-gray-400">{item.category} | {item.date}</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                             <span className="text-red-400 font-bold">{formatCurrency(Number(item.unitPrice) * Number(item.quantity), currency)}</span>
-                             <div className="flex gap-1">
-                                <button onClick={() => openEditExpense(item)} className="text-gray-400 hover:text-white p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg></button>
-                                <button onClick={() => handleDeleteExpense(item.id)} className="text-red-400 hover:text-red-300 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.067-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button>
-                             </div>
-                        </div>
+          <h3 className="text-xl font-bold mb-4 text-white">Recent Expenses</h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {expenses.length > 0 ? expenses.sort((a, b) => b.date.localeCompare(a.date)).map(item => (
+              <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded hover:bg-gray-700">
+                <div>
+                  <p className="font-semibold text-white">{item.name}</p>
+                  <p className="text-xs text-gray-400">{item.category} | {item.date}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-red-400 font-bold">{formatCurrency(Number(item.unitPrice) * Number(item.quantity), currency)}</span>
+                      <span className="text-xs text-gray-500">
+                        ({formatCurrency(Number(item.unitPrice) * Number(item.quantity), currency === 'USD' ? 'TRY' : 'USD')})
+                      </span>
                     </div>
-                )) : <p className="text-gray-500 italic">No expense records.</p>}
-            </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEditExpense(item)} className="text-gray-400 hover:text-white p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" /></svg></button>
+                    <button onClick={() => handleDeleteExpense(item.id)} className="text-red-400 hover:text-red-300 p-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.067-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg></button>
+                  </div>
+                </div>
+              </div>
+            )) : <p className="text-gray-500 italic">No expense records.</p>}
+          </div>
         </div>
       </div>
     </div>

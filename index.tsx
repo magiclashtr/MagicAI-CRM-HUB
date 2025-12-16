@@ -189,7 +189,7 @@ const App: React.FC<AppProps> = ({ isGuest = false, onExitGuest }) => {
     const renderContent = () => {
         switch (activeItem) {
             case 'dashboard': return <Dashboard currency={currency} />;
-            case 'training': return <Training />;
+            case 'training': return <Training currency={currency} />;
             case 'course-preparation': return <CoursePreparationView />;
             case 'finance': return <Finance currency={currency} />;
             case 'tasks': return <Tasks />;

@@ -59,6 +59,7 @@ export interface PaymentHistory {
   amount: number;
   method: string;
   courseName: string;
+  incomeId?: string;
 }
 
 export interface EnrolledCourse {

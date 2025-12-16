@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Student, Course, Employee, Currency, EnrolledCourse, StudentSource, CourseTemplate } from '../types';
+import { Student, Course, Employee, Currency, EnrolledCourse, StudentSource, CourseTemplate, CoursePreparation } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { geminiService } from '../services/geminiService';
 import { auth } from '../services/firebase';
@@ -500,7 +500,7 @@ const CourseModal: React.FC<{
                         <input name="duration" value={formData.duration} onChange={handleChange} placeholder="Duration (e.g. 2 days)" className="w-full bg-gray-700 p-3 rounded" />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="price" type="number" value={formData.price} onChange={handleChange} placeholder="Price" className="w-full bg-gray-700 p-3 rounded" />
+                        <input name="price" type="number" value={formData.price} onChange={handleChange} placeholder="Price (USD)" className="w-full bg-gray-700 p-3 rounded" />
                         <input name="startDate" type="date" value={formData.startDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" />
                     </div>
                 </form>
@@ -610,7 +610,7 @@ const CourseStudentsModal: React.FC<{
     course: Course;
     students: Student[];
     onClose: () => void;
-    onPay: (student: Student, course: EnrolledCourse) => void;
+    onPay: (student: Student, course: EnrolledCourse, payment?: PaymentHistory) => void;
     currency: Currency;
 }> = ({ course, students, onClose, onPay, currency }) => {
     const enrolledStudents = students.filter(s =>
@@ -629,7 +629,8 @@ const CourseStudentsModal: React.FC<{
                 <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
                     <div>
                         <h2 className="text-2xl font-bold">{course.name}</h2>
-                        <p className="text-gray-400 text-sm">Student List & Financials</p>
+                        <p className="text-indigo-400 text-sm font-semibold">Teacher: {course.teacherName}</p>
+                        <p className="text-gray-400 text-xs">Student List & Financials</p>
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-white">&times;</button>
                 </div>
@@ -654,19 +655,32 @@ const CourseStudentsModal: React.FC<{
                                             <div>
                                                 <h3 className="font-bold text-white">{student.name}</h3>
                                                 <p className="text-xs text-gray-400">{student.phone || student.email}</p>
+                                                <span className="text-[10px] text-indigo-400 hover:underline mt-1 block">
+                                                    {isExpanded ? 'Hide History' : 'Show History'}
+                                                </span>
                                             </div>
                                         </div>
                                         <div className="text-right flex items-center gap-4">
                                             <div>
                                                 <div className="text-sm">
                                                     <span className="text-gray-400">Paid:</span>{' '}
-                                                    <span className="text-green-400 font-medium">{formatCurrency(courseData.pricePaid, currency)}</span>
+                                                    <span className="text-green-400 font-medium whitespace-nowrap">
+                                                        {formatCurrency(courseData.pricePaid, currency)}
+                                                        <span className="text-xs text-gray-500 ml-1">
+                                                            ({formatCurrency(courseData.pricePaid, currency === 'USD' ? 'TRY' : 'USD')})
+                                                        </span>
+                                                    </span>
                                                     <span className="text-gray-500 mx-1">/</span>
-                                                    <span className="text-gray-300">{formatCurrency(courseData.price, currency)}</span>
+                                                    <span className="text-gray-300">
+                                                        {formatCurrency(courseData.price, currency)}
+                                                    </span>
                                                 </div>
                                                 {courseData.priceDue > 0 ? (
-                                                    <div className="text-red-400 font-bold text-sm mt-1">
+                                                    <div className="text-red-400 font-bold text-sm mt-1 whitespace-nowrap">
                                                         Debt: {formatCurrency(courseData.priceDue, currency)}
+                                                        <span className="text-xs text-red-500/70 ml-1">
+                                                            ({formatCurrency(courseData.priceDue, currency === 'USD' ? 'TRY' : 'USD')})
+                                                        </span>
                                                     </div>
                                                 ) : (
                                                     <div className="text-green-500 font-bold text-xs mt-1 bg-green-500/10 px-2 py-0.5 rounded inline-block">
@@ -688,7 +702,16 @@ const CourseStudentsModal: React.FC<{
                                                         <div key={idx} className="flex justify-between text-sm border-b border-gray-700/50 pb-1 last:border-0">
                                                             <span className="text-gray-300">{ph.date}</span>
                                                             <span className="text-gray-400">{ph.method}</span>
-                                                            <span className="text-green-400 font-mono">{formatCurrency(ph.amount, currency)}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-green-400 font-mono">{formatCurrency(ph.amount, currency)}</span>
+                                                                <button
+                                                                    onClick={() => onPay(student, courseData, ph)}
+                                                                    className="text-gray-500 hover:text-indigo-400 transition-colors"
+                                                                    title="Edit Payment"
+                                                                >
+                                                                    <EditIcon />
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -715,55 +738,333 @@ const CourseStudentsModal: React.FC<{
     );
 };
 
+
+
+// Employee Details Modal
+const EmployeeDetailsModal: React.FC<{
+    employee: Employee;
+    courses: Course[];
+    students: Student[];
+    coursePreparations: CoursePreparation[];
+    onClose: () => void;
+    onEditEmployee: () => void; // Callback to open the edit modal
+    currency: Currency;
+}> = ({ employee, courses, students, coursePreparations, onClose, onEditEmployee, currency }) => {
+    // 1. Get Courses taught by this employee
+    const employeesCourses = courses.filter(c => c.teacherId === employee.id);
+
+    // 2. Aggregate Data
+    let totalPaid = 0;
+    let totalDebt = 0;
+    let potentialRevenue = 0;
+
+    const courseDetails = employeesCourses.map(course => {
+        // Readiness (Svitlofor)
+        const prep = coursePreparations.find(cp => cp.courseId === course.id);
+        const readinessPercent = prep ? prep.progress : 0;
+
+        // Students in this course
+        const enrolledStudents = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id));
+
+        let coursePaid = 0;
+        let courseDebt = 0;
+        let coursePotentail = 0;
+
+        const studentsWithFinancials = enrolledStudents.map(student => {
+            const data = student.enrolledCourses.find(ec => ec.courseId === course.id)!;
+            coursePaid += data.pricePaid;
+            courseDebt += data.priceDue;
+            coursePotentail += data.price;
+            return { student, data };
+        });
+
+        totalPaid += coursePaid;
+        totalDebt += courseDebt;
+        potentialRevenue += coursePotentail;
+
+        return {
+            course,
+            readinessPercent,
+            enrolledStudents: studentsWithFinancials,
+            coursePaid,
+            courseDebt,
+            coursePotentail
+        };
+    });
+
+    const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
+    const [expandedStudentHistoryId, setExpandedStudentHistoryId] = useState<string | null>(null);
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-700 border-2 border-cyan-500">
+                            {employee.avatar ? <img src={employee.avatar} alt={employee.name} className="w-full h-full object-cover" /> : <EmployeeIcon className="w-full h-full p-4 text-gray-400" />}
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-bold text-white">{employee.name}</h2>
+                            <p className="text-cyan-400 font-medium">{employee.role}</p>
+                            <div className="text-sm text-gray-400 mt-1 flex gap-4">
+                                <span>{employee.email}</span>
+                                <span>{employee.phone}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={onEditEmployee}>Edit Profile</Button>
+                        <button onClick={onClose} className="text-gray-400 hover:text-white text-xl p-2">&times;</button>
+                    </div>
+                </div>
+
+                {/* Financial Overview Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600">
+                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Total Paid (Actual)</p>
+                        <p className="text-2xl font-bold text-green-400">{formatCurrency(totalPaid, currency)}</p>
+                        <p className="text-xs text-gray-500">({formatCurrency(totalPaid, currency === 'USD' ? 'TRY' : 'USD')})</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600">
+                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Total Debt</p>
+                        <p className="text-2xl font-bold text-red-400">{formatCurrency(totalDebt, currency)}</p>
+                        <p className="text-xs text-gray-500">({formatCurrency(totalDebt, currency === 'USD' ? 'TRY' : 'USD')})</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-2 opacity-10"><CourseIcon className="w-12 h-12" /></div>
+                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Potential Revenue</p>
+                        <p className="text-2xl font-bold text-indigo-400">{formatCurrency(potentialRevenue, currency)}</p>
+                        <div className="w-full bg-gray-600 h-1 mt-2 rounded-full overflow-hidden">
+                            <div className="bg-indigo-500 h-full" style={{ width: `${potentialRevenue > 0 ? (totalPaid / potentialRevenue) * 100 : 0}%` }}></div>
+                        </div>
+                        <p className="text-[10px] text-indigo-300 mt-1 text-right">
+                            {potentialRevenue > 0 ? ((totalPaid / potentialRevenue) * 100).toFixed(0) : 0}% Collected
+                        </p>
+                    </div>
+                </div>
+
+                {/* Course List */}
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    Active Courses <span className="text-sm font-normal text-gray-400 bg-gray-700 px-2 py-0.5 rounded-full">{courseDetails.length}</span>
+                </h3>
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                    {courseDetails.length > 0 ? courseDetails.map(({ course, readinessPercent, enrolledStudents, coursePaid, courseDebt }) => (
+                        <div key={course.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600">
+                            {/* Course Header */}
+                            <div
+                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-600/50 transition-colors"
+                                onClick={() => setExpandedCourseId(expandedCourseId === course.id ? null : course.id)}
+                            >
+                                <div className="flex items-center gap-4 flex-1">
+                                    <div className={`p-2 rounded-lg ${readinessPercent === 100 ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
+                                        <CourseIcon className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-lg">{course.name}</h4>
+                                        <p className="text-sm text-gray-400">{course.startDate} | {course.duration}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-8 mr-4">
+                                    {/* Readiness Bar */}
+                                    {readinessPercent !== undefined && (
+                                        <div className="w-32">
+                                            <div className="flex justify-between text-xs mb-1">
+                                                <span className="text-gray-400">Readiness</span>
+                                                <span className={`${readinessPercent === 100 ? 'text-green-400' : 'text-yellow-400'}`}>{readinessPercent}%</span>
+                                            </div>
+                                            <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full transition-all duration-500 ${readinessPercent === 100 ? 'bg-green-500' : 'bg-yellow-500'}`}
+                                                    style={{ width: `${readinessPercent}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="text-right min-w-[100px]">
+                                        <p className="text-xs text-gray-400">Debt</p>
+                                        <p className={`font-bold ${courseDebt > 0 ? 'text-red-400' : 'text-gray-500'}`}>{formatCurrency(courseDebt, currency)}</p>
+                                    </div>
+                                    <div className="text-right min-w-[100px]">
+                                        <p className="text-xs text-gray-400">Paid</p>
+                                        <p className="font-bold text-green-400">{formatCurrency(coursePaid, currency)}</p>
+                                    </div>
+                                </div>
+                                <div className="text-gray-500">
+                                    {expandedCourseId === course.id ? '▲' : '▼'}
+                                </div>
+                            </div>
+
+                            {/* Expanded Students List */}
+                            {expandedCourseId === course.id && (
+                                <div className="bg-gray-800/50 p-4 border-t border-gray-600 inset-shadow-md">
+                                    <h5 className="text-sm font-bold text-gray-400 uppercase mb-3 ml-1">Enrolled Students ({enrolledStudents.length})</h5>
+                                    {enrolledStudents.length > 0 ? (
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {enrolledStudents.map(({ student, data }) => (
+                                                <div key={student.id} className="bg-gray-700/50 rounded overflow-hidden">
+                                                    <div
+                                                        className="flex justify-between items-center p-2 hover:bg-gray-700 transition-colors cursor-pointer"
+                                                        onClick={() => setExpandedStudentHistoryId(expandedStudentHistoryId === student.id ? null : student.id)}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-600">
+                                                                {student.avatar ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-1 text-gray-400" />}
+                                                            </div>
+                                                            <span className="text-sm font-medium">{student.name}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-sm">
+                                                            <span className={`${data.priceDue > 0 ? 'text-red-400' : 'text-green-500'} font-mono`}>
+                                                                {data.priceDue > 0 ? `Debt: ${formatCurrency(data.priceDue, currency)}` : 'Paid'}
+                                                            </span>
+                                                            <span className="text-xs text-gray-500">{expandedStudentHistoryId === student.id ? 'Hide History' : 'Show History'}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Payment History Sub-expansion */}
+                                                    {expandedStudentHistoryId === student.id && (
+                                                        <div className="bg-gray-900/30 p-2 pl-12 text-xs border-t border-gray-700">
+                                                            <p className="font-bold text-gray-400 mb-1 uppercase text-[10px]">Transaction History</p>
+                                                            {data.paymentHistory && data.paymentHistory.length > 0 ? (
+                                                                <div className="space-y-1">
+                                                                    {data.paymentHistory.map((ph, idx) => (
+                                                                        <div key={idx} className="flex justify-between text-gray-300">
+                                                                            <span>{ph.date}</span>
+                                                                            <span>{ph.method}</span>
+                                                                            <span className="text-green-400 font-mono">{formatCurrency(ph.amount, currency)}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-gray-500 italic">No payments recorded.</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500 italic ml-1">No students enrolled.</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )) : (
+                        <div className="text-center py-10 text-gray-500">
+                            <p>This employee is not teaching any active courses.</p>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
+                    <Button variant="secondary" onClick={onClose}>Close</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
-const Training: React.FC = () => {
+const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
     const [activeTab, setActiveTab] = useState<Tab>('students');
     const [students, setStudents] = useState<Student[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [courses, setCourses] = useState<Course[]>([]);
     const [courseTemplates, setCourseTemplates] = useState<CourseTemplate[]>([]);
-    const [currency] = useState<Currency>('TRY'); // DEFAULT CURRENCY CHANGED TO TRY
+    const [coursePreparations, setCoursePreparations] = useState<CoursePreparation[]>([]);
+    // const [currency, setCurrency] = useState<Currency>('TRY'); // Removed local state // DEFAULT CURRENCY CHANGED TO TRY
     const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState<'student' | 'employee' | 'course' | 'courseStudents' | 'payment' | null>(null);
+    const [showModal, setShowModal] = useState<'student' | 'employee' | 'employeeDetails' | 'course' | 'courseStudents' | 'payment' | null>(null);
     const [selectedItem, setSelectedItem] = useState<any>(null); // Type could be Student | Employee | Course
-    const [paymentData, setPaymentData] = useState<{ student: Student, course: EnrolledCourse } | null>(null);
+    const [paymentData, setPaymentData] = useState<{ student: Student, course: EnrolledCourse, initialPayment?: PaymentHistory } | null>(null);
     const [filterText, setFilterText] = useState('');
+    const [courseFilter, setCourseFilter] = useState<'active' | 'past'>('active');
     // ... load data useEffect ... (unchanged)
 
     // ... handle delete/save student/employee/course ... (unchanged)
 
-    const handleSavePayment = async (amount: number, date: string, method: string) => {
+    const handleSavePayment = async (amount: number, date: string, method: string, paymentId?: string) => {
         if (!paymentData) return;
         const { student, course } = paymentData;
 
         try {
             // Update the specific enrolled course
-            const updatedEnrolledCourses = student.enrolledCourses.map(ec => {
+            const updatedEnrolledCourses = await Promise.all(student.enrolledCourses.map(async ec => {
                 if (ec.courseId === course.courseId) {
-                    const newPricePaid = ec.pricePaid + amount;
-                    const newPriceDue = Math.max(0, ec.price - newPricePaid);
+                    if (paymentId) {
+                        // Editing existing payment
+                        const oldPayment = ec.paymentHistory.find(p => p.id === paymentId);
+                        const oldAmount = oldPayment ? oldPayment.amount : 0;
+                        // Adjust totals: remove old amount, add new amount
+                        let newPricePaid = ec.pricePaid - oldAmount + amount;
+                        let newPriceDue = Math.max(0, ec.price - newPricePaid);
 
-                    const newPayment = {
-                        id: Date.now().toString(),
-                        date,
-                        amount, // Stored in USD (assuming conversion happened in Modal)
-                        method,
-                        courseName: ec.courseName
-                    };
+                        // Sync with Finance (Income)
+                        let currentIncomeId = oldPayment?.incomeId;
+                        if (currentIncomeId) {
+                            await firestoreService.updateIncome(currentIncomeId, {
+                                date,
+                                amount,
+                                description: `Payment from ${student.name} for course '${ec.courseName}'`
+                            });
+                        } else {
+                            // Legacy: Create new income record if missing
+                            const incomeResult = await firestoreService.addIncome({
+                                date,
+                                amount,
+                                description: `Payment from ${student.name} for course '${ec.courseName}'`
+                            });
+                            currentIncomeId = incomeResult.id;
+                        }
 
-                    return {
-                        ...ec,
-                        pricePaid: newPricePaid,
-                        priceDue: newPriceDue,
-                        paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
-                        paymentHistory: [...(ec.paymentHistory || []), newPayment]
-                    };
+                        const updatedHistory = ec.paymentHistory.map(p =>
+                            p.id === paymentId ? { ...p, amount, date, method, incomeId: currentIncomeId } : p
+                        );
+
+                        return {
+                            ...ec,
+                            pricePaid: newPricePaid,
+                            priceDue: newPriceDue,
+                            paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
+                            paymentHistory: updatedHistory
+                        };
+                    } else {
+                        // New Payment
+                        let newPricePaid = ec.pricePaid + amount;
+                        let newPriceDue = Math.max(0, ec.price - newPricePaid);
+
+                        // Sync with Finance (Income)
+                        const incomeResult = await firestoreService.addIncome({
+                            date,
+                            amount,
+                            description: `Payment from ${student.name} for course '${ec.courseName}'`
+                        });
+
+                        const newPayment: PaymentHistory = {
+                            id: Date.now().toString(),
+                            date,
+                            amount, // Stored in USD (assuming conversion happened in Modal)
+                            method,
+                            courseName: ec.courseName,
+                            incomeId: incomeResult.id
+                        };
+
+                        return {
+                            ...ec,
+                            pricePaid: newPricePaid,
+                            priceDue: newPriceDue,
+                            paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
+                            paymentHistory: [...(ec.paymentHistory || []), newPayment]
+                        };
+                    }
                 }
                 return ec;
-            });
+            }));
 
             // Optimistic Update
             const updatedStudent = { ...student, enrolledCourses: updatedEnrolledCourses };
@@ -788,12 +1089,14 @@ const Training: React.FC = () => {
             firestoreService.getStudents(),
             firestoreService.getEmployees(),
             firestoreService.getCourses(),
-            firestoreService.getCourseTemplates()
-        ]).then(([s, e, c, ct]) => {
+            firestoreService.getCourseTemplates(),
+            firestoreService.getCoursePreparations()
+        ]).then(([s, e, c, ct, cp]) => {
             setStudents(s);
             setEmployees(e);
             setCourses(c);
             setCourseTemplates(ct);
+            setCoursePreparations(cp);
             setLoading(false);
         }).catch(err => {
             console.error("Failed to load data:", err);
@@ -804,7 +1107,15 @@ const Training: React.FC = () => {
     // Filter Logic
     const filteredStudents = useMemo(() => students.filter(s => s.name?.toLowerCase().includes(filterText.toLowerCase())), [students, filterText]);
     const filteredEmployees = useMemo(() => employees.filter(e => e.name?.toLowerCase().includes(filterText.toLowerCase())), [employees, filterText]);
-    const filteredCourses = useMemo(() => courses.filter(c => c.name?.toLowerCase().includes(filterText.toLowerCase())), [courses, filterText]);
+    const filteredCourses = useMemo(() => {
+        return courses.filter(c => {
+            const matchesText = c.name?.toLowerCase().includes(filterText.toLowerCase());
+            const today = new Date().toISOString().split('T')[0];
+            const isActive = c.startDate >= today;
+            const matchesFilter = courseFilter === 'active' ? isActive : !isActive;
+            return matchesText && matchesFilter;
+        });
+    }, [courses, filterText, courseFilter]);
 
     // Handlers
     const handleDelete = async (type: Tab, id: string) => {
@@ -911,6 +1222,23 @@ const Training: React.FC = () => {
                 </div>
             </div>
 
+            {activeTab === 'courses' && (
+                <div className="flex gap-4 mb-6 border-b border-gray-700 pb-4">
+                    <button
+                        onClick={() => setCourseFilter('active')}
+                        className={`text-sm font-bold pb-2 border-b-2 transition-colors ${courseFilter === 'active' ? 'border-indigo-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}
+                    >
+                        Active & Future
+                    </button>
+                    <button
+                        onClick={() => setCourseFilter('past')}
+                        className={`text-sm font-bold pb-2 border-b-2 transition-colors ${courseFilter === 'past' ? 'border-indigo-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}
+                    >
+                        Past
+                    </button>
+                </div>
+            )}
+
             <div className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
                 <input
                     type="text"
@@ -994,7 +1322,9 @@ const Training: React.FC = () => {
                             <p className="mt-2 text-gray-500 line-clamp-3 italic">{employee.biography}</p>
                         </div>
                         <div className="flex justify-between mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => { setSelectedItem(employee); setShowModal('employee'); }} className="p-2 bg-gray-700 rounded-full hover:bg-indigo-600"><EditIcon /></button>
+                            <button onClick={() => { setSelectedItem(employee); setShowModal('employeeDetails'); }} className="px-3 py-1 bg-cyan-600 rounded-full text-xs font-bold hover:bg-cyan-500 shadow-lg flex items-center gap-1">
+                                <CourseIcon className="w-3 h-3" /> View Details
+                            </button>
                             <button onClick={() => handleGetEmployeeAdvice(employee)} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-bold hover:shadow-lg">AI Advice</button>
                             <button onClick={() => handleDelete('employees', employee.id)} className="p-2 bg-gray-700 rounded-full hover:bg-red-600"><TrashIcon /></button>
                         </div>
@@ -1035,6 +1365,17 @@ const Training: React.FC = () => {
 
             {showModal === 'student' && <AddEditStudentModal student={selectedItem} courses={courses} onClose={() => setShowModal(null)} onSave={handleSaveStudent} currency={currency} />}
             {showModal === 'employee' && <AddEditEmployeeModal employee={selectedItem} onClose={() => setShowModal(null)} onSave={handleSaveEmployee} />}
+            {showModal === 'employeeDetails' && (
+                <EmployeeDetailsModal
+                    employee={selectedItem}
+                    courses={courses}
+                    students={students}
+                    coursePreparations={coursePreparations}
+                    onClose={() => setShowModal(null)}
+                    onEditEmployee={() => setShowModal('employee')}
+                    currency={currency}
+                />
+            )}
             {showModal === 'course' && <CourseModal course={selectedItem} employees={employees} courseTemplates={courseTemplates} onClose={() => setShowModal(null)} onSave={handleSaveCourse} />}
 
             {showModal === 'courseStudents' && (
@@ -1042,8 +1383,8 @@ const Training: React.FC = () => {
                     course={selectedItem}
                     students={students}
                     onClose={() => setShowModal(null)}
-                    onPay={(student, course) => {
-                        setPaymentData({ student, course });
+                    onPay={(student, course, payment) => {
+                        setPaymentData({ student, course, initialPayment: payment });
                         setShowModal('payment');
                     }}
                     currency={currency}
@@ -1054,6 +1395,7 @@ const Training: React.FC = () => {
                 <PaymentModal
                     student={paymentData.student}
                     course={paymentData.course}
+                    initialPayment={paymentData.initialPayment}
                     onClose={() => setShowModal('courseStudents')}
                     onSave={handleSavePayment}
                     currency={currency}

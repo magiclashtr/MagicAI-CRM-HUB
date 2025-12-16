@@ -514,8 +514,8 @@ export const firestoreService = {
   // ===========================================================================
   getIncome: async (): Promise<Income[]> => docsToData(await getDocs(incomeCol)),
   addIncome: async (data: Omit<Income, 'id'>) => {
-    await addDoc(incomeCol, data);
-    return { success: true, message: `Income of ${data.amount} for '${data.description}' recorded.` };
+    const ref = await addDoc(incomeCol, data);
+    return { success: true, message: `Income of ${data.amount} for '${data.description}' recorded.`, id: ref.id };
   },
   updateIncome: async (id: string, data: Partial<Income>) => await updateDoc(doc(db, 'income', id), data),
   deleteIncome: async (id: string) => await deleteDoc(doc(db, 'income', id)),
@@ -525,6 +525,44 @@ export const firestoreService = {
     if (!income) return { success: false, message: `Income record '${description}' not found.` };
     await deleteDoc(doc(db, 'income', income.id));
     return { success: true, message: `Income record '${description}' deleted.` };
+  },
+
+  syncLegacyPayments: async () => {
+    const students = await firestoreService.getStudents();
+    let syncedCount = 0;
+
+    for (const student of students) {
+      let studentModified = false;
+      const updatedCourses = await Promise.all(student.enrolledCourses.map(async course => {
+        let historyModified = false;
+        const updatedHistory = await Promise.all((course.paymentHistory || []).map(async payment => {
+          if (!payment.incomeId) {
+            // Create Income
+            const incomeEntry = {
+              date: payment.date,
+              amount: Number(payment.amount),
+              description: `Payment from ${student.name} for course '${course.courseName}'`
+            };
+            const ref = await addDoc(incomeCol, incomeEntry);
+            syncedCount++;
+            historyModified = true;
+            return { ...payment, incomeId: ref.id };
+          }
+          return payment;
+        }));
+
+        if (historyModified) {
+          studentModified = true;
+          return { ...course, paymentHistory: updatedHistory };
+        }
+        return course;
+      }));
+
+      if (studentModified) {
+        await updateDoc(doc(db, 'students', student.id), { enrolledCourses: updatedCourses });
+      }
+    }
+    return { success: true, message: `Synced ${syncedCount} legacy payments.` };
   },
 
   getExpenses: async (): Promise<Expense[]> => docsToData(await getDocs(expensesCol)),
