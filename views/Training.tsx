@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Student, Course, Employee, Currency, EnrolledCourse, StudentSource, CourseTemplate, CoursePreparation } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { geminiService } from '../services/geminiService';
-import { auth } from '../services/firebase';
+
 import { formatCurrency } from '../constants';
 import Button from '../components/Button';
 
@@ -123,7 +123,7 @@ const AddEditStudentModal: React.FC<{
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        let finalStudentData = { ...formData };
+        const finalStudentData = { ...formData };
 
         if (imageFile) {
             try {
@@ -321,7 +321,7 @@ const AddEditEmployeeModal: React.FC<{
             return;
         }
 
-        let finalData = { ...formData };
+        const finalData = { ...formData };
 
         if (imageFile) {
             try {
@@ -983,7 +983,7 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
     const [selectedItem, setSelectedItem] = useState<any>(null); // Type could be Student | Employee | Course
     const [paymentData, setPaymentData] = useState<{ student: Student, course: EnrolledCourse, initialPayment?: PaymentHistory } | null>(null);
     const [filterText, setFilterText] = useState('');
-    const [courseFilter, setCourseFilter] = useState<'active' | 'past'>('active');
+    const [courseFilter, setCourseFilter] = useState<'upcoming' | 'past'>('upcoming');
     // ... load data useEffect ... (unchanged)
 
     // ... handle delete/save student/employee/course ... (unchanged)
@@ -995,85 +995,83 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
         try {
             // Update the specific enrolled course
             const updatedEnrolledCourses = await Promise.all(student.enrolledCourses.map(async ec => {
-                if (ec.courseId === course.courseId) {
-                    if (paymentId) {
-                        // Editing existing payment
-                        const oldPayment = ec.paymentHistory.find(p => p.id === paymentId);
-                        const oldAmount = oldPayment ? oldPayment.amount : 0;
-                        // Adjust totals: remove old amount, add new amount
-                        let newPricePaid = ec.pricePaid - oldAmount + amount;
-                        let newPriceDue = Math.max(0, ec.price - newPricePaid);
+                if (ec.courseId !== course.courseId) return ec;
 
-                        // Sync with Finance (Income)
-                        let currentIncomeId = oldPayment?.incomeId;
-                        if (currentIncomeId) {
-                            await firestoreService.updateIncome(currentIncomeId, {
-                                date,
-                                amount,
-                                description: `Payment from ${student.name} for course '${ec.courseName}'`
-                            });
-                        } else {
-                            // Legacy: Create new income record if missing
-                            const incomeResult = await firestoreService.addIncome({
-                                date,
-                                amount,
-                                description: `Payment from ${student.name} for course '${ec.courseName}'`
-                            });
-                            currentIncomeId = incomeResult.id;
-                        }
+                let newPricePaid = ec.pricePaid;
+                let updatedHistory = [...(ec.paymentHistory || [])];
 
-                        const updatedHistory = ec.paymentHistory.map(p =>
-                            p.id === paymentId ? { ...p, amount, date, method, incomeId: currentIncomeId } : p
-                        );
+                if (paymentId) {
+                    // EDIT MODE
+                    const oldPayment = ec.paymentHistory.find(p => p.id === paymentId);
+                    const oldAmount = oldPayment ? oldPayment.amount : 0;
 
-                        return {
-                            ...ec,
-                            pricePaid: newPricePaid,
-                            priceDue: newPriceDue,
-                            paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
-                            paymentHistory: updatedHistory
-                        };
+                    // Adjust total paid
+                    newPricePaid = newPricePaid - oldAmount + amount;
+
+                    // Sync with Finance (Income)
+                    let currentIncomeId = oldPayment?.incomeId;
+                    if (currentIncomeId) {
+                        await firestoreService.updateIncome(currentIncomeId, {
+                            date,
+                            amount,
+                            description: `Payment from ${student.name} for course '${ec.courseName}'`
+                        });
                     } else {
-                        // New Payment
-                        let newPricePaid = ec.pricePaid + amount;
-                        let newPriceDue = Math.max(0, ec.price - newPricePaid);
-
-                        // Sync with Finance (Income)
+                        // If for some reason incomeId is missing, create new (optional safety net)
                         const incomeResult = await firestoreService.addIncome({
                             date,
                             amount,
                             description: `Payment from ${student.name} for course '${ec.courseName}'`
                         });
-
-                        const newPayment: PaymentHistory = {
-                            id: Date.now().toString(),
-                            date,
-                            amount, // Stored in USD (assuming conversion happened in Modal)
-                            method,
-                            courseName: ec.courseName,
-                            incomeId: incomeResult.id
-                        };
-
-                        return {
-                            ...ec,
-                            pricePaid: newPricePaid,
-                            priceDue: newPriceDue,
-                            paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
-                            paymentHistory: [...(ec.paymentHistory || []), newPayment]
-                        };
+                        currentIncomeId = incomeResult.id;
                     }
+
+                    // Update local history item
+                    updatedHistory = updatedHistory.map(p =>
+                        p.id === paymentId ? { ...p, amount, date, method, incomeId: currentIncomeId } : p
+                    );
+
+                } else {
+                    // ADD MODE
+                    newPricePaid = newPricePaid + amount;
+
+                    // Sync with Finance (Income)
+                    const incomeResult = await firestoreService.addIncome({
+                        date,
+                        amount,
+                        description: `Payment from ${student.name} for course '${ec.courseName}'`
+                    });
+
+                    // Add new payment to history
+                    updatedHistory.push({
+                        id: Date.now().toString(),
+                        date,
+                        amount,
+                        method,
+                        courseName: ec.courseName,
+                        incomeId: incomeResult.id
+                    });
                 }
-                return ec;
+
+                // Recalculate Due
+                const newPriceDue = Math.max(0, ec.price - newPricePaid);
+
+                return {
+                    ...ec,
+                    pricePaid: newPricePaid,
+                    priceDue: newPriceDue,
+                    paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
+                    paymentHistory: updatedHistory
+                };
             }));
 
-            // Optimistic Update
             const updatedStudent = { ...student, enrolledCourses: updatedEnrolledCourses };
             setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent as Student : s));
 
-            // Persist
+            // Persist to Firestore
             await firestoreService.updateStudent(student.id, { enrolledCourses: updatedEnrolledCourses });
 
-            setShowModal('courseStudents'); // Return to list
+            setShowModal('courseStudents');
             setPaymentData(null);
         } catch (error) {
             console.error("Failed to save payment:", error);
@@ -1112,7 +1110,7 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
             const matchesText = c.name?.toLowerCase().includes(filterText.toLowerCase());
             const today = new Date().toISOString().split('T')[0];
             const isActive = c.startDate >= today;
-            const matchesFilter = courseFilter === 'active' ? isActive : !isActive;
+            const matchesFilter = courseFilter === 'upcoming' ? isActive : !isActive;
             return matchesText && matchesFilter;
         });
     }, [courses, filterText, courseFilter]);
@@ -1222,24 +1220,7 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
                 </div>
             </div>
 
-            {activeTab === 'courses' && (
-                <div className="flex gap-4 mb-6 border-b border-gray-700 pb-4">
-                    <button
-                        onClick={() => setCourseFilter('active')}
-                        className={`text-sm font-bold pb-2 border-b-2 transition-colors ${courseFilter === 'active' ? 'border-indigo-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}
-                    >
-                        Active & Future
-                    </button>
-                    <button
-                        onClick={() => setCourseFilter('past')}
-                        className={`text-sm font-bold pb-2 border-b-2 transition-colors ${courseFilter === 'past' ? 'border-indigo-500 text-white' : 'border-transparent text-gray-400 hover:text-white'}`}
-                    >
-                        Past
-                    </button>
-                </div>
-            )}
-
-            <div className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-lg shadow-md gap-4">
                 <input
                     type="text"
                     placeholder={`Search ${activeTab}...`}
@@ -1247,6 +1228,25 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
                     onChange={e => setFilterText(e.target.value)}
                     className="bg-gray-700 text-white px-4 py-2 rounded-lg w-full max-w-md focus:ring-2 focus:ring-indigo-500 outline-none"
                 />
+
+                {/* NEW: Course Filters */}
+                {activeTab === 'courses' && (
+                    <div className="flex bg-gray-700 rounded-lg p-1">
+                        <button
+                            onClick={() => setCourseFilter('upcoming')}
+                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${courseFilter === 'upcoming' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            Active & Future
+                        </button>
+                        <button
+                            onClick={() => setCourseFilter('past')}
+                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${courseFilter === 'past' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            Past
+                        </button>
+                    </div>
+                )}
+
                 <Button onClick={() => { setSelectedItem(null); setShowModal(activeTab === 'students' ? 'student' : activeTab === 'employees' ? 'employee' : 'course'); }}>
                     + Add {activeTab === 'students' ? 'Student' : activeTab === 'employees' ? 'Employee' : 'Course'}
                 </Button>
@@ -1372,7 +1372,7 @@ const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
                     students={students}
                     coursePreparations={coursePreparations}
                     onClose={() => setShowModal(null)}
-                    onEditEmployee={() => setShowModal('employee')}
+                    onEditEmployee={() => { setSelectedItem(selectedItem); setShowModal('employee'); }}
                     currency={currency}
                 />
             )}

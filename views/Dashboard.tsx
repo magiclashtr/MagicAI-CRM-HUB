@@ -162,15 +162,31 @@ const Dashboard: React.FC<DashboardProps> = ({ currency }) => {
             id: `task-overdue-${task.id}`,
             title: `🔥 Прострочене завдання: ${task.title}`,
             description: `Термін сплив ${task.dueDate}. Виконавець: ${task.assigneeName}.`,
-            type: 'task', // Ensure 'task' type is handled or map to existing 'general'/'finance'
+            type: 'task',
             actionType: 'notification'
           });
         }
       }
     });
 
+    // 3. Debtors Alert (NEW)
+    studentData.forEach(student => {
+      const totalDebt = student.enrolledCourses?.reduce((acc, ec) => acc + (ec.priceDue || 0), 0) || 0;
+      if (totalDebt > 5) { // Threshold to avoid tiny debts
+        const displayAmount = currency === 'TRY' ? totalDebt * 32.83 : totalDebt;
+        suggestions.push({
+          id: `debtor-${student.id}`,
+          title: `💸 Заборгованість: ${student.name}`,
+          description: `Студент має борг ${formatCurrency(displayAmount, currency)}.`,
+          type: 'finance',
+          studentId: student.id,
+          actionType: 'payment_reminder'
+        });
+      }
+    });
+
     return suggestions;
-  }, []);
+  }, [currency]);
 
   useEffect(() => {
     const fetchData = async () => {
