@@ -189,7 +189,7 @@ const App: React.FC<AppProps> = ({ isGuest = false, onExitGuest }) => {
     const renderContent = () => {
         switch (activeItem) {
             case 'dashboard': return <Dashboard currency={currency} />;
-            case 'training': return <Training currency={currency} />;
+            case 'training': return <Training />;
             case 'course-preparation': return <CoursePreparationView />;
             case 'finance': return <Finance currency={currency} />;
             case 'tasks': return <Tasks />;
@@ -257,7 +257,7 @@ const AppWithAuth: React.FC = () => {
     }
 
     // Show main app for authenticated users or guests
-    return <App isGuest={!!user ? false : guestMode} onExitGuest={() => setGuestMode(false)} />;
+    return <App isGuest={user ? false : guestMode} onExitGuest={() => setGuestMode(false)} />;
 };
 
 const container = document.getElementById('root');

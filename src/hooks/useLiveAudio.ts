@@ -79,6 +79,14 @@ export function useLiveAudio({
             outputNodeRef.current.connect(outputAudioContextRef.current.destination);
         }
 
+        // Resume contexts to ensure they are active (browsers may suspend them)
+        try {
+            await inputAudioContextRef.current.resume();
+            await outputAudioContextRef.current.resume();
+        } catch (e) {
+            console.warn('Failed to resume audio contexts:', e);
+        }
+
         try {
             mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -190,7 +198,7 @@ CURRENT USER IS A GUEST.
                         stopLiveSession();
                     },
                     onclose: () => {
-                        console.log('Live session closed');
+                        console.warn('Live session closed');
                         stopLiveSession();
                     }
                 },

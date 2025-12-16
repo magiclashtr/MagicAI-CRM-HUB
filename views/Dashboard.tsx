@@ -184,7 +184,6 @@ const Dashboard: React.FC<DashboardProps> = ({ currency }) => {
           firestoreService.getCoursePreparations(),
           firestoreService.getAdvisorSuggestions(),
         ]);
-
         setStudents(studentData);
         setCourses(courseData);
         setIncome(incomeData);
@@ -216,6 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currency }) => {
       const message = await geminiService.generateWelcomeMessage(user.name, user.role, new Date().toISOString().split('T')[0], timeOfDay);
       setAiWelcomeMessage(message);
     } catch (error) {
+      console.error("Welcome message generation failed:", error);
       setAiWelcomeMessage("Привіт! Ласкаво просимо на панель керування.");
     } finally {
       setLoadingWelcomeMessage(false);
@@ -234,6 +234,7 @@ const Dashboard: React.FC<DashboardProps> = ({ currency }) => {
       const proactiveSuggestions = generateProactiveSuggestions(students, tasks);
       setAdvisorSuggestions([...proactiveSuggestions, ...newAiSuggestions]);
     } catch (error) {
+      console.error("Regenerating suggestions failed:", error);
       alert("Не вдалося оновити пропозиції.");
     } finally {
       setIsGeneratingSuggestions(false);

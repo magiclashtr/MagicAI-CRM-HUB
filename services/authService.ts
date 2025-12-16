@@ -11,7 +11,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, serv
 import { auth, db } from './firebase';
 
 // User roles
-export type UserRole = 'admin' | 'employee' | 'student' | 'guest';
+export type UserRole = 'admin' | 'employee' | 'student' | 'guest' | 'Director' | 'Admin' | 'Manager';
 
 // User profile interface
 export interface UserProfile {

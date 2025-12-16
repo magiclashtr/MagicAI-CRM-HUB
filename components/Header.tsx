@@ -1,5 +1,4 @@
 
-
 import React from 'react';
 import { NavItem, Currency } from '../types';
 import { USD_TO_TRY_RATE } from '../constants';

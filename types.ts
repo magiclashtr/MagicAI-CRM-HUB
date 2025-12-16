@@ -40,7 +40,7 @@ declare global {
 
 export type NavItem = 'dashboard' | 'training' | 'course-preparation' | 'finance' | 'tasks';
 export type Currency = 'USD' | 'TRY';
-export type UserRole = 'Director' | 'Admin' | 'Manager';
+export type UserRole = 'Director' | 'Admin' | 'Manager' | 'admin' | 'employee' | 'student' | 'guest';
 
 export interface User {
   name: string;

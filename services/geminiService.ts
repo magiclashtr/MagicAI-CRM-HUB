@@ -4,22 +4,7 @@ import { GeminiAnalysisResult, UserRole, Student, Course, Income, Task, AdvisorS
 import { Type } from "@google/genai";
 import { firestoreService } from './firestoreService'; // Import firestoreService for RAG
 
-// Helper function to convert Blob to Base64
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        resolve(result.split(',')[1]); // Extract base64 part
-      } else {
-        reject(new Error("Failed to read blob as string."));
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
+
 
 // Helper functions for audio decoding/encoding
 function decode(base64: string): Uint8Array {
@@ -637,15 +622,19 @@ export const geminiService = {
     }
 
     const ai = getGeminiInstance();
-    console.log('[Mira Live] Attempting to connect to Gemini Live API...');
+    console.warn('[Mira Live] Attempting to connect to Gemini Live API...');
     let nextStartTime = 0;
     const sources = new Set<AudioBufferSourceNode>();
 
     // This needs to be a promise to avoid race conditions with audio streaming
     const sessionPromise = ai.live.connect({
-      model: 'gemini-2.0-flash-live-001',
+      model: 'gemini-2.0-flash-exp',
       callbacks: {
         ...callbacks,
+        onopen: () => {
+          console.warn('[Mira Live] Connected to Gemini Live API');
+          callbacks.onopen();
+        },
         onmessage: async (message: LiveServerMessage) => {
           // Process audio output
           const base64EncodedAudioString =
@@ -664,9 +653,11 @@ export const geminiService = {
               );
               const source = outputAudioContext.createBufferSource();
               source.buffer = audioBuffer;
+              console.warn('[Mira Live] Audio chunk received, playing...');
               source.connect(outputNode);
               source.addEventListener('ended', () => {
                 sources.delete(source);
+                console.warn('[Mira Live] Audio chunk ended');
               });
               source.start(nextStartTime);
               nextStartTime = nextStartTime + audioBuffer.duration;
@@ -934,7 +925,7 @@ export const geminiService = {
 if (typeof window !== 'undefined' && !window.aistudio) {
   window.aistudio = {
     hasSelectedApiKey: async () => {
-      console.log("Mock: Checking for API key selection...");
+      console.debug("Mock: Checking for API key selection...");
       // Simulate that a key is selected after 2 seconds the first time.
       if (!localStorage.getItem('mockApiKeySelected')) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -944,17 +935,17 @@ if (typeof window !== 'undefined' && !window.aistudio) {
       return localStorage.getItem('mockApiKeySelected') === 'true';
     },
     openSelectKey: async () => {
-      console.log("Mock: Opening API key selection dialog...");
+      console.debug("Mock: Opening API key selection dialog...");
       await new Promise(resolve => setTimeout(resolve, 1000));
       localStorage.setItem('mockApiKeySelected', 'true');
       alert("Mock API Key Selected (simulated). Please ensure you have configured your Gemini API key and billing on ai.google.dev/gemini-api/docs/billing if this were a real application.");
     },
     getHostUrl: async () => {
-      console.log("Mock: getHostUrl called.");
+      console.debug("Mock: getHostUrl called.");
       return "https://mock-gemini.googleapis.com";
     },
     getModelQuota: async (model: string) => {
-      console.log(`Mock: getModelQuota called for model: ${model}`);
+      console.debug(`Mock: getModelQuota called for model: ${model}`);
       const mockQuota: ModelQuota = {
         metricName: `mock-${model}-requests-per-minute`,
         maxQuota: 1000,

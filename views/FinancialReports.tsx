@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Income, Expense, Currency } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { formatCurrency } from '../constants';
+import { geminiService } from '../services/geminiService';
 
 // =============================================================================
 // CHART COMPONENTS
@@ -177,10 +178,6 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
-
-import { geminiService } from '../services/geminiService';
-
-// ... (existing chart components)
 
 const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
   const [income, setIncome] = useState<Income[]>([]);
