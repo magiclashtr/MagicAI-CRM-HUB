@@ -40,7 +40,7 @@ declare global {
 
 export type NavItem = 'dashboard' | 'training' | 'course-preparation' | 'finance' | 'tasks';
 export type Currency = 'USD' | 'TRY';
-export type UserRole = 'Director' | 'Admin' | 'Manager' | 'admin' | 'employee' | 'student' | 'guest';
+export type UserRole = 'Director' | 'Admin' | 'Manager';
 
 export interface User {
   name: string;
@@ -59,7 +59,6 @@ export interface PaymentHistory {
   amount: number;
   method: string;
   courseName: string;
-  incomeId?: string;
 }
 
 export interface EnrolledCourse {
@@ -119,7 +118,7 @@ export interface Employee {
 
 
 export interface Task {
-  id: string;
+  id:string;
   title: string;
   details: string;
   assigneeId: string;
@@ -133,11 +132,11 @@ export interface AdvisorSuggestion {
   id: string;
   title: string;
   description: string;
-  type: 'student' | 'finance' | 'course' | 'task';
+  type: 'student' | 'finance' | 'course';
   // New fields for proactive actions
   studentId?: string;
-  courseId?: string;
-  actionType?: 'payment_reminder' | 'follow_up' | 'general' | 'notification';
+  courseName?: string;
+  actionType?: 'payment_reminder' | 'follow_up' | 'general';
 }
 
 export interface Expense {
@@ -168,7 +167,7 @@ export interface ChecklistItem {
 export interface CoursePreparation {
   id: string;
   courseId: string;
-  courseName: string;
+  courseName:string;
   startDate: string;
   teacherName: string;
   type: 'Ochnyy' | 'Specialized' | 'Online' | 'Workshop';
@@ -205,4 +204,4 @@ export interface StudentDetailsResponse {
 
 // FIX: Explicitly export an empty object to ensure this file is treated as a module,
 // which resolves issues with global type augmentations.
-export { };
+export {};

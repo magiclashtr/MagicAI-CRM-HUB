@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Income, Expense, Currency } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { formatCurrency } from '../constants';
-import { geminiService } from '../services/geminiService';
 
 // =============================================================================
 // CHART COMPONENTS
@@ -19,20 +18,20 @@ const LineChart: React.FC<{ data: { labels: string[]; datasets: { label: string;
   const chartWidth = 500;
   const chartHeight = 300;
   const padding = 50;
-
+  
   const maxValue = Math.max(...data.datasets.flatMap(ds => ds.data), 0);
   const yAxisMax = maxValue > 0 ? Math.ceil(maxValue / 1000) * 1000 : 1000;
-
+  
   const xStep = data.labels.length > 1 ? (chartWidth - 2 * padding) / (data.labels.length - 1) : 0;
 
-  const points = data.datasets.map(dataset =>
+  const points = data.datasets.map(dataset => 
     dataset.data.map((value, index) => ({
       x: padding + (index * xStep),
       y: chartHeight - padding - (value / yAxisMax) * (chartHeight - 2 * padding),
     }))
   );
 
-  const pathData = points.map(datasetPoints =>
+  const pathData = points.map(datasetPoints => 
     datasetPoints.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x} ${p.y}`).join(' ')
   );
 
@@ -49,7 +48,7 @@ const LineChart: React.FC<{ data: { labels: string[]; datasets: { label: string;
     );
     setTooltip({ x: e.clientX, y: e.clientY, content });
   };
-
+  
   return (
     <div className="relative">
       <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto">
@@ -76,7 +75,7 @@ const LineChart: React.FC<{ data: { labels: string[]; datasets: { label: string;
           <path key={i} d={d} fill="none" stroke={data.datasets[i].color} strokeWidth="2" />
         ))}
         {/* Data points with tooltips */}
-        {points.map((datasetPoints, dsIndex) =>
+        {points.map((datasetPoints, dsIndex) => 
           datasetPoints.map((p, pIndex) => (
             <circle
               key={`${dsIndex}-${pIndex}`}
@@ -126,7 +125,7 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
       </div>
     );
   }
-
+  
   return (
     <div className="flex flex-col md:flex-row items-center justify-center gap-8 relative">
       <svg width="200" height="200" viewBox="0 0 200 200">
@@ -185,24 +184,6 @@ const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<number | null>(30); // 7, 30, 90, null (all time)
 
-  // AI Forecast State
-  const [forecast, setForecast] = useState<string | null>(null);
-  const [isForecasting, setIsForecasting] = useState(false);
-
-  const handleGenerateForecast = async () => {
-    setIsForecasting(true);
-    setForecast(null);
-    try {
-      const result = await geminiService.generateRevenueForecast(income, expenses);
-      setForecast(result);
-    } catch (error) {
-      console.error("Failed to generate forecast:", error);
-      setForecast("Не вдалося згенерувати прогноз. Будь ласка, спробуйте пізніше.");
-    } finally {
-      setIsForecasting(false);
-    }
-  };
-
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -225,7 +206,7 @@ const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
   const filteredData = useMemo(() => {
     const endDate = new Date();
     const startDate = new Date();
-
+    
     // Explicitly check for number type to avoid TS errors in arithmetic operations involving null/undefined
     if (typeof dateRange === 'number') {
       startDate.setDate(endDate.getDate() - dateRange);
@@ -257,7 +238,7 @@ const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
     const { filteredIncome, filteredExpenses } = filteredData;
     const allDates = [...filteredIncome.map(i => i.date), ...filteredExpenses.map(e => e.date)];
     const uniqueDates = [...new Set(allDates)].sort();
-
+    
     if (uniqueDates.length === 0) return { labels: [], datasets: [] };
 
     const incomeByDate = filteredIncome.reduce((acc: Record<string, number>, item: Income) => {
@@ -306,13 +287,13 @@ const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
   if (loading) {
     return <div className="text-center p-8">Loading financial reports...</div>;
   }
-
-  const PeriodButton: React.FC<{ period: number | null, label: string }> = ({ period, label }) => (
-    <button
-      onClick={() => setDateRange(period)}
-      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${dateRange === period ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
+  
+  const PeriodButton: React.FC<{period: number | null, label: string}> = ({ period, label }) => (
+     <button 
+        onClick={() => setDateRange(period)}
+        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${dateRange === period ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
     >
-      {label}
+        {label}
     </button>
   );
 
@@ -321,10 +302,10 @@ const FinancialReports: React.FC<{ currency: Currency }> = ({ currency }) => {
       <div className="bg-gray-800 p-4 rounded-lg flex flex-wrap items-center gap-4">
         <h2 className="text-xl font-bold">Date Range</h2>
         <div className="flex gap-2">
-          <PeriodButton period={7} label="Last 7 Days" />
-          <PeriodButton period={30} label="Last 30 Days" />
-          <PeriodButton period={90} label="Last 90 Days" />
-          <PeriodButton period={null} label="All Time" />
+            <PeriodButton period={7} label="Last 7 Days" />
+            <PeriodButton period={30} label="Last 30 Days" />
+            <PeriodButton period={90} label="Last 90 Days" />
+            <PeriodButton period={null} label="All Time" />
         </div>
       </div>
 

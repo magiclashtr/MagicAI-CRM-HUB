@@ -99,9 +99,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
   const [assigneeSearchTerm, setAssigneeSearchTerm] = useState(task?.assigneeName || formData.assigneeName || '');
   const [showAssigneeDropdown, setShowAssigneeDropdown] = useState(false);
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false); // New state for AI generation
-  const [isPrioritizing, setIsPrioritizing] = useState(false);
-  const [isSplitting, setIsSplitting] = useState(false);
-  const [suggestedSubtasks, setSuggestedSubtasks] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -155,46 +152,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
     }
   };
 
-  const handlePrioritize = async () => {
-    if (!formData.title.trim() || !formData.details.trim()) {
-      alert('Будь ласка, заповніть назву та деталі для аналізу пріоритету.');
-      return;
-    }
-    setIsPrioritizing(true);
-    try {
-      const result = await geminiService.prioritizeTask(formData.title, formData.details, formData.dueDate);
-      setFormData(prev => ({ ...prev, priority: result.priority }));
-      alert(`AI визначив пріоритет: ${result.priority}\nПричина: ${result.reason}`);
-    } catch (error) {
-      console.error('AI Prioritization failed:', error);
-      alert('Не вдалося визначити пріоритет.');
-    } finally {
-      setIsPrioritizing(false);
-    }
-  };
-
-  const handleSplitTask = async () => {
-    if (!formData.title.trim()) {
-      alert('Будь ласка, введіть назву завдання.');
-      return;
-    }
-    setIsSplitting(true);
-    try {
-      const subtasks = await geminiService.suggestTaskSplit(formData.title);
-      setSuggestedSubtasks(subtasks);
-    } catch (error) {
-      console.error('AI Split failed:', error);
-      alert('Не вдалося розділити завдання.');
-    } finally {
-      setIsSplitting(false);
-    }
-  };
-
-  const addSubtaskToDetails = (subtask: string) => {
-    setFormData(prev => ({ ...prev, details: prev.details ? `${prev.details}\n- ${subtask}` : `- ${subtask}` }));
-    setSuggestedSubtasks(prev => prev.filter(s => s !== subtask));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.assigneeId || !formData.assigneeName.trim() || !formData.dueDate.trim()) {
@@ -230,55 +187,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">Деталі</label>
             <div className="flex items-start space-x-2">
-              <textarea
-                name="details"
-                value={formData.details}
-                onChange={handleChange}
-                placeholder="Детальний опис завдання"
-                className="w-full bg-gray-700 p-3 rounded border border-gray-600 h-24"
-              />
-              <div className="flex flex-col gap-2">
+                <textarea
+                    name="details"
+                    value={formData.details}
+                    onChange={handleChange}
+                    placeholder="Детальний опис завдання"
+                    className="w-full bg-gray-700 p-3 rounded border border-gray-600 h-24"
+                />
                 <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGenerateDescription}
-                  isLoading={isGeneratingDescription}
-                  disabled={!formData.title.trim() || isGeneratingDescription}
-                  title="Згенерувати опис за допомогою AI"
-                  size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={handleGenerateDescription}
+                    isLoading={isGeneratingDescription}
+                    disabled={!formData.title.trim() || isGeneratingDescription}
+                    title="Згенерувати опис за допомогою AI"
                 >
-                  {isGeneratingDescription ? 'AI...' : 'Auto Desc'}
+                    {isGeneratingDescription ? 'Генерується...' : (formData.details ? 'Перегенерувати AI' : 'Згенерувати AI')}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleSplitTask}
-                  isLoading={isSplitting}
-                  disabled={!formData.title.trim() || isSplitting}
-                  title="Розбити на підзадачі"
-                  size="sm"
-                >
-                  Split
-                </Button>
-              </div>
             </div>
-            {suggestedSubtasks.length > 0 && (
-              <div className="mt-2 p-2 bg-gray-700/50 rounded border border-gray-600">
-                <p className="text-xs text-indigo-300 mb-1">AI пропонує підзадачі (натисніть, щоб додати):</p>
-                <div className="flex flex-wrap gap-2">
-                  {suggestedSubtasks.map((st, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => addSubtaskToDetails(st)}
-                      className="text-xs bg-indigo-900/50 hover:bg-indigo-800 text-indigo-200 px-2 py-1 rounded border border-indigo-700/50 transition-colors text-left"
-                    >
-                      + {st}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
           <div className="relative" ref={dropdownRef}>
             <label className="block text-sm font-medium text-gray-300 mb-1">Виконавець</label>
@@ -291,7 +217,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
                 setShowAssigneeDropdown(true);
                 // Also update formData.assigneeName temporarily for display while typing
                 // Note: assigneeId will be validated on submit or when a selection is made
-                setFormData(prev => ({ ...prev, assigneeName: e.target.value }));
+                setFormData(prev => ({...prev, assigneeName: e.target.value}));
               }}
               onFocus={() => setShowAssigneeDropdown(true)}
               placeholder="Виберіть виконавця"
@@ -322,13 +248,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
               <input type="date" name="dueDate" value={formData.dueDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded border border-gray-600" required />
             </div>
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-sm font-medium text-gray-300">Пріоритет</label>
-                <button type="button" onClick={handlePrioritize} disabled={isPrioritizing} className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                  {isPrioritizing ? <span className="animate-spin">⟳</span> : <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3"><path fillRule="evenodd" d="M9 4.5a.75.75 0 0 1 .721.544l.813 2.846a3.75 3.75 0 0 0 2.576 2.576l2.846.813a.75.75 0 0 1 0 1.442l-2.846.813a3.75 3.75 0 0 0-2.576 2.576l-.813 2.846a.75.75 0 0 1-1.442 0l-.813-2.846a3.75 3.75 0 0 0-2.576-2.576l-2.846-.813a.75.75 0 0 1 0-1.442l2.846-.813a3.75 3.75 0 0 0 2.576-2.576l.813-2.846A.75.75 0 0 1 9 4.5ZM18 1.5a.75.75 0 0 1 .728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 0 1 0 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 0 1-1.456 0l-.258-1.036a2.625 2.625 0 0 0-1.91-1.91l-1.036-.258a.75.75 0 0 1 0-1.456l1.036-.258a2.625 2.625 0 0 0 1.91-1.91l.258-1.036A.75.75 0 0 1 18 1.5M16.5 15a.75.75 0 0 1 .712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 0 1 0 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 0 1-1.422 0l-.395-1.183a1.5 1.5 0 0 0-.948-.948l-1.183-.395a.75.75 0 0 1 0-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0 1 16.5 15Z" clipRule="evenodd" /></svg>}
-                  AI Priority
-                </button>
-              </div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Пріоритет</label>
               <select name="priority" value={formData.priority} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded border border-gray-600">
                 <option>High</option>
                 <option>Medium</option>
@@ -357,256 +277,256 @@ const TaskModal: React.FC<TaskModalProps> = ({ task, employees, onClose, onSave 
 
 // Main Tasks Component
 const Tasks: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [draggedOverColumn, setDraggedOverColumn] = useState<'To Do' | 'In Progress' | 'Done' | null>(null); // State for visual feedback on drag over
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [assigneeFilter, setAssigneeFilter] = useState('All'); // 'All' or employee.id
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [draggedOverColumn, setDraggedOverColumn] = useState<'To Do' | 'In Progress' | 'Done' | null>(null); // State for visual feedback on drag over
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [assigneeFilter, setAssigneeFilter] = useState('All'); // 'All' or employee.id
 
-  const fetchTasksAndEmployees = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [taskData, employeeData] = await Promise.all([
-        firestoreService.getTasks(),
-        firestoreService.getEmployees(),
-      ]);
-      setEmployees(employeeData);
+    const fetchTasksAndEmployees = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const [taskData, employeeData] = await Promise.all([
+                firestoreService.getTasks(),
+                firestoreService.getEmployees(),
+            ]);
+            setEmployees(employeeData);
 
-      if (taskData.length === 0) {
-        // Map employee names to IDs for mock tasks
-        const margarita = employeeData.find(e => e.name === 'Margarita Gulina');
-        const murat = employeeData.find(e => e.name === 'Murat Gurbanov');
-        const alina = employeeData.find(e => e.name === 'Alina Ternychenko');
-        const dv = employeeData.find(e => e.name === 'DV');
+            if (taskData.length === 0) {
+                 // Map employee names to IDs for mock tasks
+                const margarita = employeeData.find(e => e.name === 'Margarita Gulina');
+                const murat = employeeData.find(e => e.name === 'Murat Gurbanov');
+                const alina = employeeData.find(e => e.name === 'Alina Ternychenko');
+                const dv = employeeData.find(e => e.name === 'DV');
 
-        // FIX: Ensure mock tasks are added only once by checking if tasks already exist
-        const initialMockTasks: Omit<Task, 'id'>[] = [
-          { title: 'Prepare "Full Start" Course Materials', details: 'Update presentation slides and print handouts.', assigneeId: margarita?.id || '', assigneeName: margarita?.name || 'Margarita Gulina', dueDate: '2025-07-15', priority: 'High', status: 'In Progress' },
-          { title: 'Follow up with "VIP" course leads', details: 'Contact students who showed interest last month.', assigneeId: murat?.id || '', assigneeName: murat?.name || 'Murat Gurbanov', dueDate: '2025-07-18', priority: 'Medium', status: 'To Do' },
-          { title: 'Order new lash supplies', details: 'Restock glue, primer, and eye patches.', assigneeId: alina?.id || '', assigneeName: alina?.name || 'Alina Ternychenko', dueDate: '2025-07-20', priority: 'Medium', status: 'To Do' },
-          { title: 'Finalize Q3 marketing budget', details: 'Review ad spend and plan for upcoming promotions.', assigneeId: dv?.id || '', assigneeName: dv?.name || 'DV', dueDate: '2025-07-25', priority: 'Low', status: 'Done' },
-        ];
+                // FIX: Ensure mock tasks are added only once by checking if tasks already exist
+                const initialMockTasks: Omit<Task, 'id'>[] = [
+                    { title: 'Prepare "Full Start" Course Materials', details: 'Update presentation slides and print handouts.', assigneeId: margarita?.id || '', assigneeName: margarita?.name || 'Margarita Gulina', dueDate: '2025-07-15', priority: 'High', status: 'In Progress' },
+                    { title: 'Follow up with "VIP" course leads', details: 'Contact students who showed interest last month.', assigneeId: murat?.id || '', assigneeName: murat?.name || 'Murat Gurbanov', dueDate: '2025-07-18', priority: 'Medium', status: 'To Do' },
+                    { title: 'Order new lash supplies', details: 'Restock glue, primer, and eye patches.', assigneeId: alina?.id || '', assigneeName: alina?.name || 'Alina Ternychenko', dueDate: '2025-07-20', priority: 'Medium', status: 'To Do' },
+                    { title: 'Finalize Q3 marketing budget', details: 'Review ad spend and plan for upcoming promotions.', assigneeId: dv?.id || '', assigneeName: dv?.name || 'DV', dueDate: '2025-07-25', priority: 'Low', status: 'Done' },
+                ];
 
-        const existingTitles = new Set(taskData.map(t => t.title));
-        const tasksToAdd = initialMockTasks.filter(mockTask => !existingTitles.has(mockTask.title));
-
-        if (tasksToAdd.length > 0) {
-          const addPromises = tasksToAdd.map(task => firestoreService.addTask(task));
-          await Promise.all(addPromises);
-          const updatedTaskData = await firestoreService.getTasks(); // Fetch again to get new IDs
-          setTasks(updatedTaskData);
-        } else {
-          setTasks(taskData);
+                const existingTitles = new Set(taskData.map(t => t.title));
+                const tasksToAdd = initialMockTasks.filter(mockTask => !existingTitles.has(mockTask.title));
+                
+                if (tasksToAdd.length > 0) {
+                    const addPromises = tasksToAdd.map(task => firestoreService.addTask(task));
+                    await Promise.all(addPromises);
+                    const updatedTaskData = await firestoreService.getTasks(); // Fetch again to get new IDs
+                    setTasks(updatedTaskData);
+                } else {
+                    setTasks(taskData);
+                }
+            } else {
+                setTasks(taskData);
+            }
+        } catch (err) {
+            console.error("Failed to fetch tasks or employees:", err);
+            setError("Не вдалося завантажити завдання або співробітників. Будь ласка, спробуйте пізніше.");
+        } finally {
+            setLoading(false);
         }
-      } else {
-        setTasks(taskData);
-      }
-    } catch (err) {
-      console.error("Failed to fetch tasks or employees:", err);
-      setError("Не вдалося завантажити завдання або співробітників. Будь ласка, спробуйте пізніше.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []);
 
-  useEffect(() => {
-    fetchTasksAndEmployees();
-  }, [fetchTasksAndEmployees]);
-
-  const filteredTasks = useMemo(() => {
-    return tasks
-      .filter(task => statusFilter === 'All' || task.status === statusFilter)
-      .filter(task => assigneeFilter === 'All' || task.assigneeId === assigneeFilter);
-  }, [tasks, statusFilter, assigneeFilter]);
-
-
-  const handleAddTask = () => {
-    setEditingTask(null);
-    setIsTaskModalOpen(true);
-  };
-
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task);
-    setIsTaskModalOpen(true);
-  };
-
-  const handleSaveTask = async (taskData: Task | Omit<Task, 'id'>) => {
-    try {
-      if ('id' in taskData) {
-        await firestoreService.updateTask(taskData.id, taskData);
-      } else {
-        await firestoreService.addTask(taskData);
-      }
-      fetchTasksAndEmployees(); // Re-fetch to update the list
-    } catch (err) {
-      console.error("Помилка збереження завдання:", err);
-      setError("Не вдалося зберегти завдання.");
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    if (window.confirm('Ви впевнені, що хочете видалити це завдання?')) {
-      try {
-        await firestoreService.deleteTask(taskId);
-        fetchTasksAndEmployees(); // Re-fetch to update the list
-      } catch (err) {
-        console.error("Помилка видалення завдання:", err);
-        setError("Не вдалося видалити завдання.");
-      }
-    }
-  };
-
-  // Drag-and-Drop Handlers
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, status: 'To Do' | 'In Progress' | 'Done') => {
-    e.preventDefault(); // Allows drop
-    e.dataTransfer.dropEffect = 'move';
-    setDraggedOverColumn(status);
-  };
-
-  const handleDragLeave = (_e: React.DragEvent<HTMLDivElement>) => {
-    setDraggedOverColumn(null);
-  };
-
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetStatus: 'To Do' | 'In Progress' | 'Done') => {
-    e.preventDefault();
-    setDraggedOverColumn(null); // Clear highlight
-
-    const taskId = e.dataTransfer.getData('taskId');
-    const currentStatus = e.dataTransfer.getData('taskStatus') as 'To Do' | 'In Progress' | 'Done';
-
-    if (currentStatus === targetStatus) {
-      return; // No status change, do nothing
-    }
-
-    const taskToUpdate = tasks.find(task => task.id === taskId);
-    if (taskToUpdate) {
-      // Optimistic UI update
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.id === taskId ? { ...task, status: targetStatus } : task
-        )
-      );
-
-      try {
-        await firestoreService.updateTask(taskId, { status: targetStatus });
-        // No need to re-fetch if optimistic update is sufficient,
-        // but re-fetch can ensure full data consistency.
-        // For this app, let's re-fetch to simplify state management after d&d.
+    useEffect(() => {
         fetchTasksAndEmployees();
-      } catch (err) {
-        console.error("Помилка оновлення статусу завдання:", err);
-        setError("Не вдалося оновити статус завдання.");
-        // Optionally revert UI on error
-        setTasks(prevTasks =>
-          prevTasks.map(task =>
-            task.id === taskId ? { ...task, status: currentStatus } : task
-          )
-        );
-      }
+    }, [fetchTasksAndEmployees]);
+    
+    const filteredTasks = useMemo(() => {
+        return tasks
+            .filter(task => statusFilter === 'All' || task.status === statusFilter)
+            .filter(task => assigneeFilter === 'All' || task.assigneeId === assigneeFilter);
+    }, [tasks, statusFilter, assigneeFilter]);
+
+
+    const handleAddTask = () => {
+        setEditingTask(null);
+        setIsTaskModalOpen(true);
+    };
+
+    const handleEditTask = (task: Task) => {
+        setEditingTask(task);
+        setIsTaskModalOpen(true);
+    };
+
+    const handleSaveTask = async (taskData: Task | Omit<Task, 'id'>) => {
+        try {
+            if ('id' in taskData) {
+                await firestoreService.updateTask(taskData.id, taskData);
+            } else {
+                await firestoreService.addTask(taskData);
+            }
+            fetchTasksAndEmployees(); // Re-fetch to update the list
+        } catch (err) {
+            console.error("Помилка збереження завдання:", err);
+            setError("Не вдалося зберегти завдання.");
+        }
+    };
+
+    const handleDeleteTask = async (taskId: string) => {
+        if (window.confirm('Ви впевнені, що хочете видалити це завдання?')) {
+            try {
+                await firestoreService.deleteTask(taskId);
+                fetchTasksAndEmployees(); // Re-fetch to update the list
+            } catch (err) {
+                console.error("Помилка видалення завдання:", err);
+                setError("Не вдалося видалити завдання.");
+            }
+        }
+    };
+
+    // Drag-and-Drop Handlers
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>, status: 'To Do' | 'In Progress' | 'Done') => {
+        e.preventDefault(); // Allows drop
+        e.dataTransfer.dropEffect = 'move';
+        setDraggedOverColumn(status);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        setDraggedOverColumn(null);
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>, targetStatus: 'To Do' | 'In Progress' | 'Done') => {
+        e.preventDefault();
+        setDraggedOverColumn(null); // Clear highlight
+
+        const taskId = e.dataTransfer.getData('taskId');
+        const currentStatus = e.dataTransfer.getData('taskStatus') as 'To Do' | 'In Progress' | 'Done';
+
+        if (currentStatus === targetStatus) {
+            return; // No status change, do nothing
+        }
+
+        const taskToUpdate = tasks.find(task => task.id === taskId);
+        if (taskToUpdate) {
+            // Optimistic UI update
+            setTasks(prevTasks =>
+                prevTasks.map(task =>
+                    task.id === taskId ? { ...task, status: targetStatus } : task
+                )
+            );
+
+            try {
+                await firestoreService.updateTask(taskId, { status: targetStatus });
+                // No need to re-fetch if optimistic update is sufficient,
+                // but re-fetch can ensure full data consistency.
+                // For this app, let's re-fetch to simplify state management after d&d.
+                fetchTasksAndEmployees(); 
+            } catch (err) {
+                console.error("Помилка оновлення статусу завдання:", err);
+                setError("Не вдалося оновити статус завдання.");
+                // Optionally revert UI on error
+                setTasks(prevTasks =>
+                    prevTasks.map(task =>
+                        task.id === taskId ? { ...task, status: currentStatus } : task
+                    )
+                );
+            }
+        }
+    };
+
+    const tasksToDo = filteredTasks.filter(t => t.status === 'To Do');
+    const tasksInProgress = filteredTasks.filter(t => t.status === 'In Progress');
+    const tasksDone = filteredTasks.filter(t => t.status === 'Done');
+
+    if (loading) {
+        return <div className="text-center p-8">Завантаження завдань...</div>;
     }
-  };
 
-  const tasksToDo = filteredTasks.filter(t => t.status === 'To Do');
-  const tasksInProgress = filteredTasks.filter(t => t.status === 'In Progress');
-  const tasksDone = filteredTasks.filter(t => t.status === 'Done');
+    if (error) {
+        return <div className="text-center p-8 text-red-500">{error}</div>;
+    }
 
-  if (loading) {
-    return <div className="text-center p-8">Завантаження завдань...</div>;
-  }
+    return (
+        <div className="space-y-6">
+             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                <h1 className="text-3xl font-bold text-white shrink-0">Управління Завданнями</h1>
+                <div className="flex flex-wrap items-center gap-2">
+                    <select
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        className="bg-gray-700 p-2 rounded border border-gray-600 text-white"
+                        aria-label="Filter tasks by status"
+                    >
+                        <option value="All">All Statuses</option>
+                        <option value="To Do">To Do</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Done">Done</option>
+                    </select>
+                    <select
+                        value={assigneeFilter}
+                        onChange={e => setAssigneeFilter(e.target.value)}
+                        className="bg-gray-700 p-2 rounded border border-gray-600 text-white"
+                        aria-label="Filter tasks by assignee"
+                    >
+                        <option value="All">All Assignees</option>
+                        {employees.filter(e => e.status === 'Active').map(emp => (
+                            <option key={emp.id} value={emp.id}>{emp.name}</option>
+                        ))}
+                    </select>
+                    <Button variant="primary" onClick={handleAddTask}>Додати нове завдання</Button>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* To Do Column */}
+                <div 
+                    className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'To Do' ? 'ring-2 ring-indigo-500' : ''}`}
+                    onDragOver={(e) => handleDragOver(e, 'To Do')}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, 'To Do')}
+                >
+                    <h2 className="text-xl font-semibold mb-4 text-white">До виконання ({tasksToDo.length})</h2>
+                    <div className="space-y-4 flex-1">
+                        {tasksToDo.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
+                    </div>
+                    {tasksToDo.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
+                </div>
 
-  if (error) {
-    return <div className="text-center p-8 text-red-500">{error}</div>;
-  }
+                {/* In Progress Column */}
+                <div 
+                    className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'In Progress' ? 'ring-2 ring-indigo-500' : ''}`}
+                    onDragOver={(e) => handleDragOver(e, 'In Progress')}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, 'In Progress')}
+                >
+                    <h2 className="text-xl font-semibold mb-4 text-white">В процесі ({tasksInProgress.length})</h2>
+                    <div className="space-y-4 flex-1">
+                        {tasksInProgress.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
+                    </div>
+                    {tasksInProgress.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
+                </div>
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-3xl font-bold text-white shrink-0">Управління Завданнями</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="bg-gray-700 p-2 rounded border border-gray-600 text-white"
-            aria-label="Filter tasks by status"
-          >
-            <option value="All">All Statuses</option>
-            <option value="To Do">To Do</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Done">Done</option>
-          </select>
-          <select
-            value={assigneeFilter}
-            onChange={e => setAssigneeFilter(e.target.value)}
-            className="bg-gray-700 p-2 rounded border border-gray-600 text-white"
-            aria-label="Filter tasks by assignee"
-          >
-            <option value="All">All Assignees</option>
-            {employees.filter(e => e.status === 'Active').map(emp => (
-              <option key={emp.id} value={emp.id}>{emp.name}</option>
-            ))}
-          </select>
-          <Button variant="primary" onClick={handleAddTask}>Додати нове завдання</Button>
+                {/* Done Column */}
+                <div 
+                    className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'Done' ? 'ring-2 ring-indigo-500' : ''}`}
+                    onDragOver={(e) => handleDragOver(e, 'Done')}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, 'Done')}
+                >
+                    <h2 className="text-xl font-semibold mb-4 text-white">Виконано ({tasksDone.length})</h2>
+                     <div className="space-y-4 flex-1">
+                        {tasksDone.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
+                    </div>
+                    {tasksDone.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
+                </div>
+            </div>
+
+            {isTaskModalOpen && (
+                <TaskModal
+                    task={editingTask}
+                    employees={employees}
+                    onClose={() => setIsTaskModalOpen(false)}
+                    onSave={handleSaveTask}
+                />
+            )}
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* To Do Column */}
-        <div
-          className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'To Do' ? 'ring-2 ring-indigo-500' : ''}`}
-          onDragOver={(e) => handleDragOver(e, 'To Do')}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, 'To Do')}
-        >
-          <h2 className="text-xl font-semibold mb-4 text-white">До виконання ({tasksToDo.length})</h2>
-          <div className="space-y-4 flex-1">
-            {tasksToDo.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
-          </div>
-          {tasksToDo.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
-        </div>
-
-        {/* In Progress Column */}
-        <div
-          className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'In Progress' ? 'ring-2 ring-indigo-500' : ''}`}
-          onDragOver={(e) => handleDragOver(e, 'In Progress')}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, 'In Progress')}
-        >
-          <h2 className="text-xl font-semibold mb-4 text-white">В процесі ({tasksInProgress.length})</h2>
-          <div className="space-y-4 flex-1">
-            {tasksInProgress.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
-          </div>
-          {tasksInProgress.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
-        </div>
-
-        {/* Done Column */}
-        <div
-          className={`bg-gray-900 p-4 rounded-lg min-h-[300px] flex flex-col ${draggedOverColumn === 'Done' ? 'ring-2 ring-indigo-500' : ''}`}
-          onDragOver={(e) => handleDragOver(e, 'Done')}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, 'Done')}
-        >
-          <h2 className="text-xl font-semibold mb-4 text-white">Виконано ({tasksDone.length})</h2>
-          <div className="space-y-4 flex-1">
-            {tasksDone.map(task => <TaskCard key={task.id} task={task} onEdit={handleEditTask} onDelete={handleDeleteTask} />)}
-          </div>
-          {tasksDone.length === 0 && <p className="text-gray-500 text-center py-4">Немає завдань</p>}
-        </div>
-      </div>
-
-      {isTaskModalOpen && (
-        <TaskModal
-          task={editingTask}
-          employees={employees}
-          onClose={() => setIsTaskModalOpen(false)}
-          onSave={handleSaveTask}
-        />
-      )}
-    </div>
-  );
+    );
 };
 
 export default Tasks;

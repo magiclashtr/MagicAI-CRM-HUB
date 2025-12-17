@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Student, Course, Employee, Currency, EnrolledCourse, StudentSource, CourseTemplate, CoursePreparation } from '../types';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Student, Course, Employee, Currency, PaymentHistory, Note, EnrolledCourse, StudentSource, CourseTemplate } from '../types';
 import { firestoreService } from '../services/firestoreService';
 import { geminiService } from '../services/geminiService';
-
-import { formatCurrency } from '../constants';
+import { formatCurrency, PAYMENT_METHODS } from '../constants';
 import Button from '../components/Button';
 
 type Tab = 'students' | 'employees' | 'courses';
@@ -11,8 +10,10 @@ type Tab = 'students' | 'employees' | 'courses';
 // =============================================================================
 // ICONS
 // =============================================================================
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-6 h-6"}><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>;
 const PhoneIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 0 1-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 0 0-1.091-.852H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z" /></svg>;
 const EmailIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>;
+const MessageIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.76 9.76 0 0 1-2.53-2.218l-1.002-1.002a2.25 2.25 0 0 0-3.182 0l-1.002 1.002A9.76 9.76 0 0 1 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" /></svg>;
 const UserIcon: React.FC<{ className?: string }> = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-6 h-6"}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>;
 const CourseIcon: React.FC<{ className?: string }> = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-6 h-6"}><path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 0 0-.491 6.347A48.627 48.627 0 0 1 12 20.902a48.627 48.627 0 0 1 8.232-4.408 60.426 60.426 0 0 0-.491-6.347m-15.482 0l1.391-.521A11.233 11.233 0 0 1 12 9.80c4.833 0 8.842 3.047 10.687 7.256v2.271m-15.482 0zM12 18.807v2.095m0-11.758V7.5M6 10.147l2.28-2.28m4.26-2.262 2.28 2.28M18 10.147l-2.28-2.28" /></svg>;
 const EmployeeIcon: React.FC<{ className?: string }> = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-6 h-6"}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-4.663M12 12a4.5 4.5 0 0 1 4.5-4.5 4.5 4.5 0 0 1 4.5 4.5 4.5 4.5 0 0 1-4.5-4.5ZM12 12a2.25 2.25 0 0 0-2.25 2.25m2.25-2.25a2.25 2.25 0 0 0 2.25 2.25M12 12a2.25 2.25 0 0 0-2.25-2.25M12 12a2.25 2.25 0 0 0 2.25-2.25" /></svg>;
@@ -25,226 +26,227 @@ const EditIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" fill="n
 
 // Add/Edit Student Modal
 const AddEditStudentModal: React.FC<{
-    student: Student | null;
-    courses: Course[];
-    onClose: () => void;
-    onSave: (studentData: Student | Omit<Student, 'id'>) => Promise<void>;
-    currency: Currency;
+  student: Student | null;
+  courses: Course[];
+  onClose: () => void;
+  onSave: (studentData: Student | Omit<Student, 'id'>) => Promise<void>;
+  currency: Currency;
 }> = ({ student, courses, onClose, onSave, currency }) => {
-    const [formData, setFormData] = useState<any>(() => {
-        const defaultData = {
-            name: '', email: '', phone: '', messenger: '', source: '',
-            registrationDate: new Date().toISOString().split('T')[0],
-            managerUid: 'margarita-g-id', // Default manager
-            status: 'Pending',
-            notes: [],
-            enrolledCourses: [],
-            avatar: '',
-        };
-        const studentData = student ? { ...student } : defaultData;
-        return {
-            ...studentData,
-            avatar: student?.avatar || '',
-            selectedCourseIds: student?.enrolledCourses.map(c => c.courseId) || [],
-        };
+  const [formData, setFormData] = useState<any>(() => {
+    const defaultData = {
+      name: '', email: '', phone: '', messenger: '', source: '',
+      registrationDate: new Date().toISOString().split('T')[0],
+      managerUid: 'margarita-g-id', // Default manager
+      status: 'Pending',
+      notes: [],
+      enrolledCourses: [],
+      avatar: '',
+    };
+    const studentData = student ? { ...student } : defaultData;
+    // FIX: Create a new object for the form state, combining student data with the UI-specific 'selectedCourseIds' property to resolve the type error.
+    return {
+      ...studentData,
+      avatar: student?.avatar || '',
+      selectedCourseIds: student?.enrolledCourses.map(c => c.courseId) || [],
+    };
+  });
+  const [sources, setSources] = useState<StudentSource[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState(student?.avatar || '');
+
+  useEffect(() => {
+    firestoreService.getStudentSources().then(setSources);
+  }, []);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    if (imageFile) {
+        objectUrl = URL.createObjectURL(imageFile);
+        setPreviewUrl(objectUrl);
+    }
+    return () => {
+        if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+        }
+    };
+  }, [imageFile]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev: any) => ({ ...prev, [name]: value }));
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            alert("File is too large. Please select an image smaller than 5MB.");
+            return;
+        }
+        setImageFile(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+      setImageFile(null);
+      setPreviewUrl('');
+      setFormData((prev: any) => ({ ...prev, avatar: '' }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCourseChange = (courseId: string) => {
+    setFormData((prev: any) => {
+      const selectedCourseIds = prev.selectedCourseIds.includes(courseId)
+        ? prev.selectedCourseIds.filter((id: string) => id !== courseId)
+        : [...prev.selectedCourseIds, courseId];
+      return { ...prev, selectedCourseIds };
     });
-    const [sources, setSources] = useState<StudentSource[]>([]);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [imageFile, setImageFile] = useState<File | null>(null);
-    const [previewUrl, setPreviewUrl] = useState(student?.avatar || '');
+  };
 
-    useEffect(() => {
-        firestoreService.getStudentSources().then(setSources);
-    }, []);
-
-    useEffect(() => {
-        let objectUrl: string | null = null;
-        if (imageFile) {
-            objectUrl = URL.createObjectURL(imageFile);
-            setPreviewUrl(objectUrl);
+  const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { value } = e.target;
+    if (value === '--add-new--') {
+      const newSourceName = window.prompt("Enter new source name:");
+      if (newSourceName) {
+        try {
+          const newSourceRef = await firestoreService.addStudentSource({ name: newSourceName });
+          const newSource = { id: newSourceRef.id, name: newSourceName };
+          setSources(prev => [...prev, newSource]);
+          setFormData((prev: any) => ({ ...prev, source: newSourceName }));
+        } catch (error) {
+          console.error("Error adding new source:", error);
         }
-        return () => {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
-        };
-    }, [imageFile]);
+      }
+    } else {
+      handleChange(e);
+    }
+  };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData((prev: any) => ({ ...prev, [name]: value }));
-    };
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    let finalStudentData = { ...formData };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                alert("File is too large. Please select an image smaller than 5MB.");
-                return;
-            }
-            setImageFile(file);
+    if (imageFile) {
+        try {
+            const studentId = student?.id || `new_student_${Date.now()}`;
+            const imagePath = `avatars/students/${studentId}_${imageFile.name}`;
+            const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
+            finalStudentData.avatar = downloadURL;
+        } catch (error) {
+            console.error("Image upload failed:", error);
+            alert("Could not upload the avatar. Please try again.");
+            return;
         }
-    };
+    }
 
-    const handleRemoveImage = () => {
-        setImageFile(null);
-        setPreviewUrl('');
-        setFormData((prev: any) => ({ ...prev, avatar: '' }));
-        if (fileInputRef.current) fileInputRef.current.value = '';
-    };
+    const { selectedCourseIds, ...studentData } = finalStudentData;
+    const currentCourseIds = student?.enrolledCourses.map(c => c.courseId) || [];
+    const coursesToAddIds = selectedCourseIds.filter((id: string) => !currentCourseIds.includes(id));
+    
+    const newEnrolledCourses: EnrolledCourse[] = coursesToAddIds.map((courseId: string) => {
+      const course = courses.find(c => c.id === courseId);
+      if (!course) throw new Error("Course not found during enrollment");
+      return {
+        courseId: course.id,
+        courseName: course.name,
+        startDate: course.startDate,
+        price: course.price,
+        pricePaid: 0,
+        priceDue: course.price,
+        paymentStatus: 'Pending',
+        progress: 0,
+        paymentHistory: [],
+      };
+    });
+    
+    studentData.enrolledCourses = [...(student?.enrolledCourses || []), ...newEnrolledCourses];
+    await onSave(studentData);
+  };
 
-    const handleCourseChange = (courseId: string) => {
-        setFormData((prev: any) => {
-            const selectedCourseIds = prev.selectedCourseIds.includes(courseId)
-                ? prev.selectedCourseIds.filter((id: string) => id !== courseId)
-                : [...prev.selectedCourseIds, courseId];
-            return { ...prev, selectedCourseIds };
-        });
-    };
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const { value } = e.target;
-        if (value === '--add-new--') {
-            const newSourceName = window.prompt("Enter new source name:");
-            if (newSourceName) {
-                try {
-                    const newSourceRef = await firestoreService.addStudentSource({ name: newSourceName });
-                    const newSource = { id: newSourceRef.id, name: newSourceName };
-                    setSources(prev => [...prev, newSource]);
-                    setFormData((prev: any) => ({ ...prev, source: newSourceName }));
-                } catch (error) {
-                    console.error("Error adding new source:", error);
-                }
-            }
-        } else {
-            handleChange(e);
-        }
-    };
+  const availableCourses = courses.filter(course => new Date(course.startDate) >= fourteenDaysAgo);
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const finalStudentData = { ...formData };
-
-        if (imageFile) {
-            try {
-                const studentId = student?.id || `new_student_${Date.now()}`;
-                const imagePath = `avatars/students/${studentId}_${imageFile.name}`;
-                const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
-                finalStudentData.avatar = downloadURL;
-            } catch (error) {
-                console.error("Image upload failed:", error);
-                alert("Could not upload the avatar. Please try again.");
-                return;
-            }
-        }
-
-        const { selectedCourseIds, ...studentData } = finalStudentData;
-        const currentCourseIds = student?.enrolledCourses.map(c => c.courseId) || [];
-        const coursesToAddIds = selectedCourseIds.filter((id: string) => !currentCourseIds.includes(id));
-
-        const newEnrolledCourses: EnrolledCourse[] = coursesToAddIds.map((courseId: string) => {
-            const course = courses.find(c => c.id === courseId);
-            if (!course) throw new Error("Course not found during enrollment");
-            return {
-                courseId: course.id,
-                courseName: course.name,
-                startDate: course.startDate,
-                price: course.price,
-                pricePaid: 0,
-                priceDue: course.price,
-                paymentStatus: 'Pending',
-                progress: 0,
-                paymentHistory: [],
-            };
-        });
-
-        studentData.enrolledCourses = [...(student?.enrolledCourses || []), ...newEnrolledCourses];
-        await onSave(studentData);
-    };
-
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-    const availableCourses = courses.filter(course => new Date(course.startDate) >= fourteenDaysAgo);
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
-                <h2 className="text-2xl font-bold mb-6">{student ? 'Edit Student' : 'Register New Student'}</h2>
-                <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
-                    <div className="flex flex-col items-center gap-4 mb-6">
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleImageChange}
-                            accept="image/png, image/jpeg, image/gif"
-                            className="hidden"
-                        />
-                        <div className="relative">
-                            {previewUrl ? (
-                                <img src={previewUrl} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover border-2 border-gray-600" />
-                            ) : (
-                                <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 border-dashed">
-                                    <UserIcon className="w-10 h-10 text-gray-500" />
-                                </div>
-                            )}
-                            {previewUrl && (
-                                <button
-                                    type="button"
-                                    onClick={handleRemoveImage}
-                                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-700 transition-colors shadow-sm"
-                                    title="Remove image"
-                                >
-                                    &times;
-                                </button>
-                            )}
-                        </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                            {previewUrl ? 'Change Photo' : 'Upload Photo'}
-                        </Button>
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+      <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <h2 className="text-2xl font-bold mb-6">{student ? 'Edit Student' : 'Register New Student'}</h2>
+        <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
+          <div className="flex flex-col items-center gap-4 mb-6">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageChange}
+                accept="image/png, image/jpeg, image/gif"
+                className="hidden"
+            />
+            <div className="relative">
+                {previewUrl ? (
+                    <img src={previewUrl} alt="Avatar Preview" className="w-24 h-24 rounded-full object-cover border-2 border-gray-600" />
+                ) : (
+                    <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center border-2 border-gray-600 border-dashed">
+                        <UserIcon className="w-10 h-10 text-gray-500" />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="name" value={formData.name} onChange={handleChange} placeholder="Full Name" className="w-full bg-gray-700 p-3 rounded" required />
-                        <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
-                        <input name="messenger" value={formData.messenger} onChange={handleChange} placeholder="@username or link" className="w-full bg-gray-700 p-3 rounded" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <select name="source" value={formData.source} onChange={handleSourceChange} className="w-full bg-gray-700 p-3 rounded">
-                            <option value="" disabled>Select a source</option>
-                            {sources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                            <option value="--add-new--" className="text-indigo-400">-- Add New Source --</option>
-                        </select>
-                        <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-                            <option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
-                        </select>
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-semibold my-4">Courses</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {availableCourses.map(course => (
-                                <label key={course.id} className="bg-gray-700 p-3 rounded-lg flex items-center space-x-3 cursor-pointer">
-                                    <input type="checkbox" checked={formData.selectedCourseIds.includes(course.id)} onChange={() => handleCourseChange(course.id)} className="w-5 h-5 bg-gray-600 border-gray-500 rounded text-indigo-500 focus:ring-indigo-600" />
-                                    <div>
-                                        <p className="font-bold">{course.name}</p>
-                                        <p className="text-xs text-gray-400">{course.teacherName} | {course.startDate}</p>
-                                        <p className="text-sm font-semibold text-indigo-400">{formatCurrency(course.price, currency)}</p>
-                                    </div>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-                </form>
-                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="primary" onClick={handleSave}>{student ? 'Save Changes' : 'Register Student'}</Button>
-                </div>
+                )}
+                {previewUrl && (
+                    <button 
+                        type="button" 
+                        onClick={handleRemoveImage}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-700 transition-colors shadow-sm"
+                        title="Remove image"
+                    >
+                        &times;
+                    </button>
+                )}
             </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                {previewUrl ? 'Change Photo' : 'Upload Photo'}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input name="name" value={formData.name} onChange={handleChange} placeholder="Full Name" className="w-full bg-gray-700 p-3 rounded" required />
+            <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
+            <input name="messenger" value={formData.messenger} onChange={handleChange} placeholder="@username or link" className="w-full bg-gray-700 p-3 rounded" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <select name="source" value={formData.source} onChange={handleSourceChange} className="w-full bg-gray-700 p-3 rounded">
+              <option value="" disabled>Select a source</option>
+              {sources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              <option value="--add-new--" className="text-indigo-400">-- Add New Source --</option>
+            </select>
+            <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+              <option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
+            </select>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold my-4">Courses</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {availableCourses.map(course => (
+                <label key={course.id} className="bg-gray-700 p-3 rounded-lg flex items-center space-x-3 cursor-pointer">
+                  <input type="checkbox" checked={formData.selectedCourseIds.includes(course.id)} onChange={() => handleCourseChange(course.id)} className="w-5 h-5 bg-gray-600 border-gray-500 rounded text-indigo-500 focus:ring-indigo-600" />
+                  <div>
+                    <p className="font-bold">{course.name}</p>
+                    <p className="text-xs text-gray-400">{course.teacherName} | {course.startDate}</p>
+                    <p className="text-sm font-semibold text-indigo-400">{formatCurrency(course.price, currency)}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </form>
+        <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>{student ? 'Save Changes' : 'Register Student'}</Button>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 
@@ -278,10 +280,10 @@ const AddEditEmployeeModal: React.FC<{
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         if (name === 'specializations') {
-            setFormData(prev => ({ ...prev, [name]: value.split(',').map(s => s.trim()) }));
+             setFormData(prev => ({ ...prev, [name]: value.split(',').map(s => s.trim()) }));
         } else {
-            // Prevent NaN from being set in state, which Firestore rejects.
-            setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
+             // Prevent NaN from being set in state, which Firestore rejects.
+             setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
         }
     };
 
@@ -299,12 +301,12 @@ const AddEditEmployeeModal: React.FC<{
     const triggerImageUpload = () => {
         fileInputRef.current?.click();
     };
-
+    
     const handleGenerateBio = async () => {
         setIsGeneratingBio(true);
         try {
             const bio = await geminiService.generateEmployeeBio(formData.name, formData.role, formData.specializations);
-            setFormData(prev => ({ ...prev, biography: bio }));
+            setFormData(prev => ({...prev, biography: bio}));
         } catch (error) {
             console.error("Failed to generate bio:", error);
         } finally {
@@ -312,16 +314,9 @@ const AddEditEmployeeModal: React.FC<{
         }
     };
 
-    const handleSave = async (e: React.FormEvent | React.MouseEvent) => {
-        if (e && e.preventDefault) e.preventDefault();
-
-        // Basic validation check
-        if (!formData.name || !formData.role) {
-            alert("Name and Role are required!");
-            return;
-        }
-
-        const finalData = { ...formData };
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        let finalData = { ...formData };
 
         if (imageFile) {
             try {
@@ -330,24 +325,19 @@ const AddEditEmployeeModal: React.FC<{
                 const downloadURL = await firestoreService.uploadImage(imageFile, imagePath);
                 finalData.avatar = downloadURL;
             } catch (error) {
-                console.error("Image upload failed (likely CORS or permission):", error);
-                alert("Image upload failed (CORS/Network). Saving employee with default avatar instead.");
-                // Do NOT return. Proceed to save the employee data without the custom image.
+                console.error("Image upload failed:", error);
+                alert("Could not upload the new avatar. Please try again.");
+                return;
             }
         }
-        try {
-            await onSave(finalData);
-        } catch (error) {
-            console.error("Failed to save employee:", error);
-            alert("Failed to save employee. Please check the console for details.");
-        }
+        await onSave(finalData);
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
             <div className="bg-gray-800 p-8 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
                 <h2 className="text-2xl font-bold mb-6">{employee ? 'Редагувати співробітника' : 'Додати нового співробітника'}</h2>
-                <div className="flex-1 overflow-y-auto pr-4 space-y-4">
+                <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
                     <div className="flex flex-col items-center gap-4 mb-4">
                         <input
                             type="file"
@@ -374,33 +364,27 @@ const AddEditEmployeeModal: React.FC<{
                         <input name="name" value={formData.name} onChange={handleChange} placeholder="Повне ім'я" className="w-full bg-gray-700 p-3 rounded" required />
                         <input name="email" type="email" value={formData.email} onChange={handleChange} placeholder="Email" className="w-full bg-gray-700 p-3 rounded" />
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="phone" value={formData.phone} onChange={handleChange} placeholder="Phone" className="w-full bg-gray-700 p-3 rounded" />
-                        <select name="role" value={formData.role} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                         <select name="role" value={formData.role} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
                             <option>Trainer</option><option>Support</option><option>Admin</option><option>Master</option><option>Manager</option><option>Creator</option><option>Master Artist</option><option>Marketing Manager</option><option>IT Support</option>
                         </select>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input name="salary" type="number" value={formData.salary} onChange={handleChange} placeholder="Salary (USD/month)" className="w-full bg-gray-700 p-3 rounded" />
                         <input name="hireDate" type="date" value={formData.hireDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" />
                     </div>
                     <div>
                         <input name="specializations" value={formData.specializations.join(', ')} onChange={handleChange} placeholder="Specializations (comma-separated)" className="w-full bg-gray-700 p-3 rounded" />
                     </div>
-                    <div>
+                     <div>
                         <textarea name="biography" value={formData.biography} onChange={handleChange} placeholder="Biography" className="w-full bg-gray-700 p-3 rounded h-24" />
                         <Button type="button" variant="outline" size="sm" onClick={handleGenerateBio} isLoading={isGeneratingBio}>Generate Bio (AI)</Button>
                     </div>
-                    <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
-                        <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
-                        <button
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                            type="button"
-                            onClick={handleSave}
-                        >
-                            {employee ? 'Save Changes' : 'Add Employee'}
-                        </button>
-                    </div>
+                </form>
+                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" onClick={handleSave}>{employee ? 'Save Changes' : 'Add Employee'}</Button>
                 </div>
             </div>
         </div>
@@ -410,19 +394,19 @@ const AddEditEmployeeModal: React.FC<{
 
 // Add/Edit Course Modal
 const CourseModal: React.FC<{
-    course: Course | null;
-    employees: Employee[];
-    courseTemplates: CourseTemplate[];
-    onClose: () => void;
-    onSave: (courseData: Course | Omit<Course, 'id'>) => Promise<void>;
+  course: Course | null;
+  employees: Employee[];
+  courseTemplates: CourseTemplate[];
+  onClose: () => void;
+  onSave: (courseData: Course | Omit<Course, 'id'>) => Promise<void>;
 }> = ({ course, employees, courseTemplates, onClose, onSave }) => {
     const [formData, setFormData] = useState<Course | Omit<Course, 'id'>>(() => {
-        const defaultName = courseTemplates.length > 0 ? courseTemplates[0].name : '';
-        return course || {
+       const defaultName = courseTemplates.length > 0 ? courseTemplates[0].name : '';
+       return course || {
             name: defaultName,
             description: '', image: '', teacherId: '', teacherName: '',
             duration: '', price: 0, startDate: new Date().toISOString().split('T')[0], type: 'Ochnyy'
-        };
+       };
     });
     const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
 
@@ -432,7 +416,7 @@ const CourseModal: React.FC<{
             // Add the current course's name to the list if it's not a standard template
             options.push({ id: course.id, name: course.name });
         }
-        return options.sort((a, b) => a.name.localeCompare(b.name));
+        return options.sort((a,b) => a.name.localeCompare(b.name));
     }, [courseTemplates, course]);
 
     useEffect(() => {
@@ -443,19 +427,19 @@ const CourseModal: React.FC<{
         const { name, value, type } = e.target;
         if (name === 'teacherId') {
             const selectedTeacher = employees.find(emp => emp.id === value);
-            setFormData(prev => ({ ...prev, teacherId: value, teacherName: selectedTeacher?.name || '' }));
+            setFormData(prev => ({...prev, teacherId: value, teacherName: selectedTeacher?.name || '' }));
         } else {
-            // Prevent NaN from being set in state, which Firestore rejects.
-            setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
+             // Prevent NaN from being set in state, which Firestore rejects.
+             setFormData(prev => ({ ...prev, [name]: type === 'number' ? (Number(value) || 0) : value }));
         }
     };
-
+    
     const handleGenerateDescription = async () => {
         if (!formData.name) return;
         setIsGeneratingDesc(true);
         try {
             const desc = await geminiService.generateCourseDescription(formData.name);
-            setFormData(prev => ({ ...prev, description: desc }));
+            setFormData(prev => ({...prev, description: desc}));
         } catch (error) {
             console.error("Failed to generate description:", error);
         } finally {
@@ -475,38 +459,139 @@ const CourseModal: React.FC<{
                 <form onSubmit={handleSave} className="flex-1 overflow-y-auto pr-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <select name="name" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
-                            {courseNameOptions.map(template => <option key={template.id} value={template.name}>{template.name}</option>)}
+                             {courseNameOptions.map(template => <option key={template.id} value={template.name}>{template.name}</option>)}
                         </select>
-                        <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-                            <option value="Ochnyy">Face-to-Face</option>
-                            <option value="Specialized">Specialized</option>
-                            <option value="Online">Online</option>
-                            <option value="Workshop">Workshop</option>
+                         <select name="teacherId" value={formData.teacherId} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" required>
+                            <option value="" disabled>Select a Teacher</option>
+                             {employees.filter(e => e.role === 'Trainer' || e.role === 'Master').map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
                         </select>
                     </div>
-                    <div>
-                        <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Course Description" className="w-full bg-gray-700 p-3 rounded h-32" />
-                        <Button type="button" variant="outline" size="sm" onClick={handleGenerateDescription} isLoading={isGeneratingDesc}>
-                            Generate Description (AI)
-                        </Button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <select name="teacherId" value={formData.teacherId} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
-                            <option value="">Select Teacher</option>
-                            {employees.filter(e => e.role === 'Trainer' || e.role === 'Master').map(emp => (
-                                <option key={emp.id} value={emp.id}>{emp.name}</option>
-                            ))}
-                        </select>
-                        <input name="duration" value={formData.duration} onChange={handleChange} placeholder="Duration (e.g. 2 days)" className="w-full bg-gray-700 p-3 rounded" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <input name="price" type="number" value={formData.price} onChange={handleChange} placeholder="Price (USD)" className="w-full bg-gray-700 p-3 rounded" />
                         <input name="startDate" type="date" value={formData.startDate} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded" />
+                         <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-gray-700 p-3 rounded">
+                            <option>Ochnyy</option><option>Online</option><option>Specialized</option><option>Workshop</option>
+                        </select>
+                    </div>
+                     <input name="duration" value={formData.duration} onChange={handleChange} placeholder="Duration (e.g., 5 days, 3 hours)" className="w-full bg-gray-700 p-3 rounded" />
+                     <div>
+                        <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description" className="w-full bg-gray-700 p-3 rounded h-24" />
+                        <Button type="button" variant="outline" size="sm" onClick={handleGenerateDescription} isLoading={isGeneratingDesc}>Generate with AI</Button>
                     </div>
                 </form>
-                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                 <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button variant="primary" onClick={handleSave}>{course ? 'Save Changes' : 'Add Course'}</Button>
+                    <Button variant="primary" onClick={handleSave}>{course ? 'Save Course' : 'Add Course'}</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// Course Template Manager Modal
+const CourseTemplateModal: React.FC<{
+  templates: CourseTemplate[];
+  onClose: () => void;
+  onSave: (templates: CourseTemplate[]) => Promise<void>;
+}> = ({ templates, onClose, onSave }) => {
+    const [localTemplates, setLocalTemplates] = useState<CourseTemplate[]>(JSON.parse(JSON.stringify(templates)));
+    const [newTemplateName, setNewTemplateName] = useState('');
+
+    const handleNameChange = (id: string, newName: string) => {
+        setLocalTemplates(prev => prev.map(t => t.id === id ? { ...t, name: newName } : t));
+    };
+
+    const handleAddTemplate = async () => {
+        if (!newTemplateName.trim()) return;
+        try {
+            const newRef = await firestoreService.addCourseTemplate({ name: newTemplateName.trim() });
+            setLocalTemplates(prev => [...prev, { id: newRef.id, name: newTemplateName.trim() }]);
+            setNewTemplateName('');
+        } catch (error) {
+            console.error("Error adding template:", error);
+        }
+    };
+    
+    const handleUpdateTemplate = async (template: CourseTemplate) => {
+       await firestoreService.updateCourseTemplate(template.id, { name: template.name });
+    };
+
+    const handleDeleteTemplate = async (id: string) => {
+        if (window.confirm("Are you sure you want to delete this course name? This cannot be undone.")) {
+            try {
+                await firestoreService.deleteCourseTemplate(id);
+                setLocalTemplates(prev => prev.filter(t => t.id !== id));
+            } catch (error) {
+                console.error("Error deleting template:", error);
+            }
+        }
+    };
+    
+    const handleClose = () => {
+        // Here we don't call the onSave prop because changes are made live.
+        // The parent component should re-fetch.
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <h2 className="text-2xl font-bold mb-6">Manage Course Names List</h2>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-4">
+                    {localTemplates.map(template => (
+                        <div key={template.id} className="flex items-center gap-2 bg-gray-700 p-2 rounded">
+                            <input
+                                type="text"
+                                value={template.name}
+                                onChange={e => handleNameChange(template.id, e.target.value)}
+                                onBlur={() => handleUpdateTemplate(template)}
+                                className="flex-grow bg-gray-600 p-2 rounded border border-gray-500"
+                            />
+                            <Button variant="danger" size="sm" onClick={() => handleDeleteTemplate(template.id)}><TrashIcon /></Button>
+                        </div>
+                    ))}
+                </div>
+                <div className="flex items-center gap-2 pt-4 border-t border-gray-700">
+                    <input
+                        type="text"
+                        placeholder="Add new course name"
+                        value={newTemplateName}
+                        onChange={e => setNewTemplateName(e.target.value)}
+                        className="flex-grow bg-gray-700 p-2 rounded"
+                    />
+                    <Button variant="primary" onClick={handleAddTemplate}>Add Name</Button>
+                </div>
+                 <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
+                    <Button variant="secondary" onClick={handleClose}>Close</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+
+// Note Modal
+const NoteModal: React.FC<{
+  studentId: string;
+  onClose: () => void;
+  onSave: (studentId: string, content: string) => Promise<void>;
+}> = ({ studentId, onClose, onSave }) => {
+    const [content, setContent] = useState('');
+    const handleSave = async () => {
+        if (content.trim()) {
+            await onSave(studentId, content.trim());
+        }
+    };
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
+            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-lg">
+                <h2 className="text-2xl font-bold mb-6">Add New Note</h2>
+                <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Note content..." className="w-full bg-gray-700 p-3 rounded h-32" />
+                <div className="flex justify-end space-x-4 pt-4">
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" onClick={handleSave}>Save Note</Button>
                 </div>
             </div>
         </div>
@@ -515,894 +600,764 @@ const CourseModal: React.FC<{
 
 // Payment Modal
 const PaymentModal: React.FC<{
-    student: Student;
-    course: EnrolledCourse;
-    initialPayment?: PaymentHistory; // NEW: For editing
-    onClose: () => void;
-    onSave: (amount: number, date: string, method: string, paymentId?: string) => Promise<void>;
-    currency: Currency;
-}> = ({ student, course, initialPayment, onClose, onSave, currency }) => {
-    // If editing, defaults to stored value.
-    const [amount, setAmount] = useState(initialPayment ? initialPayment.amount.toString() : '');
-    const [date, setDate] = useState(initialPayment ? initialPayment.date : new Date().toISOString().split('T')[0]);
-    const [method, setMethod] = useState(initialPayment ? initialPayment.method : 'Cash');
-    const [paymentCurrency, setPaymentCurrency] = useState<Currency>(currency);
+  student: Student;
+  enrolledCourse: EnrolledCourse;
+  onClose: () => void;
+  onSave: (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => Promise<void>;
+  currency: Currency;
+}> = ({ student, enrolledCourse, onClose, onSave, currency }) => {
+    const [amount, setAmount] = useState(enrolledCourse.priceDue > 0 ? enrolledCourse.priceDue : 0);
+    const [method, setMethod] = useState(PAYMENT_METHODS[0]);
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // If editing and in TRY mode, show approximate TRY value
-    useEffect(() => {
-        if (initialPayment && currency === 'TRY') {
-            setAmount((initialPayment.amount * 32.83).toFixed(2));
+    const handleSave = () => {
+        if (amount > 0) {
+            onSave(student.id, enrolledCourse.courseId, { date, amount, method, courseName: enrolledCourse.courseName });
         }
-    }, [initialPayment, currency]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        let finalAmount = Number(amount);
-        if (paymentCurrency === 'TRY') {
-            finalAmount = finalAmount / 32.83;
-        }
-        await onSave(finalAmount, date, method, initialPayment?.id);
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-4">{initialPayment ? 'Edit Payment' : 'Add Payment'}</h2>
-                <p className="text-gray-400 mb-6">{student.name} - {course.courseName}</p>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">Amount</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="number"
-                                value={amount}
-                                onChange={e => setAmount(e.target.value)}
-                                className="w-full bg-gray-700 p-3 rounded text-white"
-                                required
-                                min="0.01"
-                                step="any"
-                            />
-                            <select
-                                value={paymentCurrency}
-                                onChange={e => setPaymentCurrency(e.target.value as Currency)}
-                                className="bg-gray-700 p-3 rounded text-white"
-                            >
-                                <option value="TRY">TRY</option>
-                                <option value="USD">USD</option>
-                            </select>
-                        </div>
+            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-lg">
+                <h2 className="text-2xl font-bold mb-4">Record Payment</h2>
+                 <div className="bg-gray-700 p-3 rounded-lg mb-6 text-sm">
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Student:</span>
+                        <span className="font-semibold text-white">{student.name}</span>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">Date</label>
-                        <input
-                            type="date"
-                            value={date}
-                            onChange={e => setDate(e.target.value)}
-                            className="w-full bg-gray-700 p-3 rounded text-white"
-                            required
-                        />
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-400">Course:</span>
+                        <span className="font-semibold text-white">{enrolledCourse.courseName}</span>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">Method</label>
-                        <select
-                            value={method}
-                            onChange={e => setMethod(e.target.value)}
-                            className="w-full bg-gray-700 p-3 rounded text-white"
-                        >
-                            <option value="Cash">Cash</option>
-                            <option value="Card">Card</option>
-                            <option value="Bank Transfer">Bank Transfer</option>
-                            <option value="Crypto">Crypto</option>
-                        </select>
+                    <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-600">
+                        <span className="text-gray-400">Amount Due:</span>
+                        <span className="font-semibold text-red-400">{formatCurrency(Number(enrolledCourse.priceDue), currency)}</span>
                     </div>
-                    <div className="flex justify-end gap-3 mt-6">
-                        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button variant="primary" type="submit">Save</Button>
-                    </div>
-                </form>
+                </div>
+                <div className="space-y-4">
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-gray-700 p-3 rounded" />
+                    <input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} placeholder="Amount" className="w-full bg-gray-700 p-3 rounded" />
+                    <select value={method} onChange={e => setMethod(e.target.value)} className="w-full bg-gray-700 p-3 rounded">
+                        {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+                    </select>
+                </div>
+                <div className="flex justify-end space-x-4 pt-6 mt-4 border-t border-gray-700">
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="primary" onClick={handleSave}>Save Payment</Button>
+                </div>
             </div>
         </div>
     );
 };
 
-// Update CourseStudentsModal to include Payment Trigger
-const CourseStudentsModal: React.FC<{
-    course: Course;
-    students: Student[];
-    onClose: () => void;
-    onPay: (student: Student, course: EnrolledCourse, payment?: PaymentHistory) => void;
-    currency: Currency;
-}> = ({ course, students, onClose, onPay, currency }) => {
-    const enrolledStudents = students.filter(s =>
-        s.enrolledCourses.some(ec => ec.courseId === course.id)
-    );
 
-    const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
+// =============================================================================
+// ACCORDION ITEMS
+// =============================================================================
 
-    const toggleExpand = (id: string) => {
-        setExpandedStudentId(prev => prev === id ? null : id);
-    };
+const StudentAccordionItem: React.FC<{
+  student: Student;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onEdit: (student: Student) => void;
+  onDelete: (id: string) => void;
+  onAddNote: (id: string) => void;
+  onAddPayment: (student: Student, enrolledCourse: EnrolledCourse) => void;
+  currency: Currency;
+}> = ({ student, isExpanded, onToggle, onEdit, onDelete, onAddNote, onAddPayment, currency }) => {
+    const [showHistoryForCourse, setShowHistoryForCourse] = useState<string | null>(null);
+    const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+    const [isLoadingAdvice, setIsLoadingAdvice] = useState(false);
+
+    const consolidatedPaymentHistory = useMemo(() => {
+        if (!student.enrolledCourses) {
+            return [];
+        }
+
+        const allPayments = student.enrolledCourses.flatMap(course => course.paymentHistory);
+
+        // Sort by date, most recent first
+        return allPayments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [student.enrolledCourses]);
+
+    const fetchAiAdvice = useCallback(async () => {
+        setIsLoadingAdvice(true);
+        setAiAdvice(null);
+        try {
+            const advice = await geminiService.getStudentAdvice(student);
+            setAiAdvice(advice);
+        } catch (error) {
+            console.error("Failed to fetch AI advice:", error);
+            setAiAdvice("An error occurred while generating advice. Please try again.");
+        } finally {
+            setIsLoadingAdvice(false);
+        }
+    }, [student]);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
-                    <div>
-                        <h2 className="text-2xl font-bold">{course.name}</h2>
-                        <p className="text-indigo-400 text-sm font-semibold">Teacher: {course.teacherName}</p>
-                        <p className="text-gray-400 text-xs">Student List & Financials</p>
-                    </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white">&times;</button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-                    {enrolledStudents.length > 0 ? (
-                        enrolledStudents.map(student => {
-                            const courseData = student.enrolledCourses.find(ec => ec.courseId === course.id)!;
-                            const isExpanded = expandedStudentId === student.id;
-
-                            return (
-                                <div key={student.id} className="bg-gray-700 rounded-lg overflow-hidden">
-                                    <div className="p-4 flex items-center justify-between">
-                                        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => toggleExpand(student.id)}>
-                                            <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-600">
-                                                {student.avatar ? (
-                                                    <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <UserIcon className="w-full h-full p-2 text-gray-400" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-white">{student.name}</h3>
-                                                <p className="text-xs text-gray-400">{student.phone || student.email}</p>
-                                                <span className="text-[10px] text-indigo-400 hover:underline mt-1 block">
-                                                    {isExpanded ? 'Hide History' : 'Show History'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="text-right flex items-center gap-4">
-                                            <div>
-                                                <div className="text-sm">
-                                                    <span className="text-gray-400">Paid:</span>{' '}
-                                                    <span className="text-green-400 font-medium whitespace-nowrap">
-                                                        {formatCurrency(courseData.pricePaid, currency)}
-                                                        <span className="text-xs text-gray-500 ml-1">
-                                                            ({formatCurrency(courseData.pricePaid, currency === 'USD' ? 'TRY' : 'USD')})
-                                                        </span>
-                                                    </span>
-                                                    <span className="text-gray-500 mx-1">/</span>
-                                                    <span className="text-gray-300">
-                                                        {formatCurrency(courseData.price, currency)}
-                                                    </span>
-                                                </div>
-                                                {courseData.priceDue > 0 ? (
-                                                    <div className="text-red-400 font-bold text-sm mt-1 whitespace-nowrap">
-                                                        Debt: {formatCurrency(courseData.priceDue, currency)}
-                                                        <span className="text-xs text-red-500/70 ml-1">
-                                                            ({formatCurrency(courseData.priceDue, currency === 'USD' ? 'TRY' : 'USD')})
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-green-500 font-bold text-xs mt-1 bg-green-500/10 px-2 py-0.5 rounded inline-block">
-                                                        Paid in Full
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <Button size="sm" onClick={() => onPay(student, courseData)}>Pay</Button>
-                                        </div>
-                                    </div>
-
-                                    {/* Expanded History */}
-                                    {isExpanded && (
-                                        <div className="bg-gray-900/50 p-4 border-t border-gray-600">
-                                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Payment History</h4>
-                                            {courseData.paymentHistory && courseData.paymentHistory.length > 0 ? (
-                                                <div className="space-y-2">
-                                                    {courseData.paymentHistory.map((ph, idx) => (
-                                                        <div key={idx} className="flex justify-between text-sm border-b border-gray-700/50 pb-1 last:border-0">
-                                                            <span className="text-gray-300">{ph.date}</span>
-                                                            <span className="text-gray-400">{ph.method}</span>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-green-400 font-mono">{formatCurrency(ph.amount, currency)}</span>
-                                                                <button
-                                                                    onClick={() => onPay(student, courseData, ph)}
-                                                                    className="text-gray-500 hover:text-indigo-400 transition-colors"
-                                                                    title="Edit Payment"
-                                                                >
-                                                                    <EditIcon />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-gray-500 italic">No payments recorded yet.</p>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })
+        <div className="bg-gray-800 rounded-lg">
+            <div className="flex items-center p-4 cursor-pointer hover:bg-gray-700/50" onClick={onToggle}>
+                {/* Avatar Display */}
+                <div className="mr-4 flex-shrink-0">
+                    {student.avatar ? (
+                        <img src={student.avatar} alt={student.name} className="w-12 h-12 rounded-full object-cover border border-gray-600" />
                     ) : (
-                        <div className="text-center text-gray-500 py-8">
-                            No students enrolled in this course yet.
+                        <div className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center border border-gray-600">
+                            <span className="text-xl font-bold text-gray-400">{student.name.charAt(0).toUpperCase()}</span>
                         </div>
                     )}
                 </div>
-
-                <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
-                    <Button variant="secondary" onClick={onClose}>Close</Button>
+                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${student.status === 'Graduated' ? 'bg-green-700 text-green-200' : student.status === 'Active' ? 'bg-blue-700 text-blue-200' : 'bg-yellow-700 text-yellow-200'}`}>
+                    {student.status}
+                </span>
+                <div className="flex-1 ml-4">
+                    <p className="font-bold text-white">{student.name}</p>
+                    <p className="text-sm text-gray-400">{student.email}</p>
                 </div>
+                <ChevronDownIcon className={`w-6 h-6 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </div>
+            {isExpanded && (
+                <div className="p-6 border-t border-gray-700 space-y-6">
+                    {/* Contact Info & Notes */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                         <div className="space-y-3">
+                            <h4 className="text-lg font-semibold text-white border-b border-gray-600 pb-2">Контактна інформація</h4>
+                            <div className="flex items-center gap-4 text-indigo-400">
+                                <a href={`tel:${student.phone}`} title="Call" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><PhoneIcon/></a>
+                                <a href={`sms:${student.phone}`} title="SMS" className={!student.phone ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><MessageIcon/></a>
+                                <a href={`mailto:${student.email}`} title="Email" className={!student.email ? "opacity-50 cursor-not-allowed" : "hover:text-indigo-300"}><EmailIcon/></a>
+                            </div>
+                             <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                                <span className="text-gray-400">Телефон:</span><span className="text-white">{student.phone || 'N/A'}</span>
+                                <span className="text-gray-400">Email:</span><span className="text-white">{student.email || 'N/A'}</span>
+                                <span className="text-gray-400">Messenger:</span><span className="text-white">{student.messenger || 'N/A'}</span>
+                                <span className="text-gray-400">Джерело:</span><span className="text-white">{student.source || 'N/A'}</span>
+                                <span className="text-gray-400">Дата реєстрації:</span><span className="text-white">{student.registrationDate}</span>
+                            </div>
+                         </div>
+                         <div className="space-y-3">
+                            <div className="flex justify-between items-center border-b border-gray-600 pb-2">
+                                <h4 className="text-lg font-semibold text-white">Нотатки</h4>
+                                <Button size="sm" variant="outline" onClick={() => onAddNote(student.id)}>Додати нотатку</Button>
+                            </div>
+                             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                                {student.notes.length > 0 ? student.notes.slice().reverse().map(note => (
+                                    <div key={note.id} className="text-sm bg-gray-700/50 p-2 rounded">
+                                        <p className="text-gray-400 text-xs">{note.date}</p>
+                                        <p className="text-white">{note.content}</p>
+                                    </div>
+                                )) : <p className="text-sm text-gray-500 italic">Нотаток немає.</p>}
+                            </div>
+                         </div>
+                    </div>
+                    {/* Consolidated Payment History */}
+                    <div>
+                        <h4 className="text-lg font-semibold text-white border-b border-gray-600 pb-2 mb-4">Загальна історія платежів</h4>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            {consolidatedPaymentHistory.length > 0 ? consolidatedPaymentHistory.map(payment => (
+                                <div key={payment.id} className="grid grid-cols-4 gap-4 items-center text-sm bg-gray-900/50 p-2 rounded">
+                                    <span className="text-gray-400">{payment.date}</span>
+                                    <span className="font-semibold text-white col-span-2">{payment.courseName}</span>
+                                    <span className="text-green-400 font-medium text-right">{formatCurrency(Number(payment.amount), currency)}</span>
+                                </div>
+                            )) : <p className="text-sm text-gray-500 italic">Історія платежів порожня.</p>}
+                        </div>
+                    </div>
+                    {/* AI Advisor Section */}
+                    <div>
+                        <h4 className="text-lg font-semibold text-white border-b border-gray-600 pb-2 mb-4">Magic.Advisor Порада</h4>
+                        {isLoadingAdvice ? (
+                            <div className="text-center p-4">
+                                <p className="text-sm text-gray-400 animate-pulse">Генерація поради...</p>
+                            </div>
+                        ) : aiAdvice ? (
+                            <div className="text-sm bg-indigo-900/30 p-4 rounded-lg border border-indigo-700">
+                                <p className="text-indigo-200 whitespace-pre-wrap">{aiAdvice}</p>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500 italic text-center p-4">Натисніть кнопку "AI Поради", щоб отримати персоналізовану рекомендацію.</p>
+                        )}
+                    </div>
+                    {/* Enrolled Courses */}
+                    <div>
+                        <h4 className="text-lg font-semibold text-white border-b border-gray-600 pb-2 mb-4">Записаний на курси</h4>
+                        <div className="space-y-4">
+                            {student.enrolledCourses.length > 0 ? student.enrolledCourses.map(course => (
+                                <div key={course.courseId} className="bg-gray-900/50 p-4 rounded-lg">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                                        <div>
+                                            <p className="font-bold text-white">{course.courseName}</p>
+                                            <p className="text-xs text-gray-400">Дата старту: {course.startDate}</p>
+                                        </div>
+                                        <div className="text-sm">
+                                            <div className="flex justify-between"><span className="text-gray-400">СПЛАЧЕНО</span> <span className="text-green-400 font-medium">{formatCurrency(Number(course.pricePaid), currency)}</span></div>
+                                            <div className="flex justify-between"><span className="text-gray-400">БОРГ</span> <span className="text-red-400 font-medium">{formatCurrency(Number(course.priceDue), currency)}</span></div>
+                                            <div className="flex justify-between"><span className="text-gray-400">СТАТУС</span> <span className={`font-bold ${course.paymentStatus === 'Paid' ? 'text-green-400' : 'text-yellow-400'}`}>{course.paymentStatus}</span></div>
+                                            <div className="mt-2">
+                                                <div className="flex justify-between text-xs mb-1"><span className="text-gray-400">Прогрес оплати</span> <span>{Math.round((Number(course.pricePaid) / Number(course.price)) * 100)}%</span></div>
+                                                <div className="w-full bg-gray-700 rounded-full h-2"><div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${(Number(course.pricePaid) / Number(course.price)) * 100}%` }}></div></div>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 justify-end">
+                                            <Button size="sm" variant="primary" onClick={() => onAddPayment(student, course)}>Додати оплату</Button>
+                                            <Button size="sm" variant="secondary" onClick={() => setShowHistoryForCourse(prev => prev === course.courseId ? null : course.courseId)}>Історія</Button>
+                                        </div>
+                                    </div>
+                                    {showHistoryForCourse === course.courseId && (
+                                        <div className="mt-4 pt-4 border-t border-gray-700">
+                                            <h5 className="font-semibold mb-2">Історія платежів</h5>
+                                            {course.paymentHistory.length > 0 ? course.paymentHistory.map(p => (
+                                                <div key={p.id} className="flex justify-between text-sm py-1">
+                                                    <span>{p.date} - {p.method}</span>
+                                                    <span className="text-green-400">{formatCurrency(Number(p.amount), currency)}</span>
+                                                </div>
+                                            )) : <p className="text-sm text-gray-500 italic">Історія платежів порожня.</p>}
+                                        </div>
+                                    )}
+                                </div>
+                            )) : <p className="text-sm text-gray-500 italic">Не записаний на жодні курси.</p>}
+                        </div>
+                    </div>
+                    {/* Actions */}
+                     <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+                        <Button variant="outline" onClick={fetchAiAdvice} isLoading={isLoadingAdvice}>AI Поради</Button>
+                        <Button variant="secondary" onClick={() => onEdit(student)}>Редагувати</Button>
+                        <Button variant="danger" onClick={() => onDelete(student.id)}>Видалити</Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 
-
-// Employee Details Modal
-const EmployeeDetailsModal: React.FC<{
-    employee: Employee;
-    courses: Course[];
-    students: Student[];
-    coursePreparations: CoursePreparation[];
-    onClose: () => void;
-    onEditEmployee: () => void; // Callback to open the edit modal
-    currency: Currency;
-}> = ({ employee, courses, students, coursePreparations, onClose, onEditEmployee, currency }) => {
-    // 1. Get Courses taught by this employee
-    const employeesCourses = courses.filter(c => c.teacherId === employee.id);
-
-    // 2. Aggregate Data
-    let totalPaid = 0;
-    let totalDebt = 0;
-    let potentialRevenue = 0;
-
-    const courseDetails = employeesCourses.map(course => {
-        // Readiness (Svitlofor)
-        const prep = coursePreparations.find(cp => cp.courseId === course.id);
-        const readinessPercent = prep ? prep.progress : 0;
-
-        // Students in this course
-        const enrolledStudents = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id));
-
-        let coursePaid = 0;
-        let courseDebt = 0;
-        let coursePotentail = 0;
-
-        const studentsWithFinancials = enrolledStudents.map(student => {
-            const data = student.enrolledCourses.find(ec => ec.courseId === course.id)!;
-            coursePaid += data.pricePaid;
-            courseDebt += data.priceDue;
-            coursePotentail += data.price;
-            return { student, data };
-        });
-
-        totalPaid += coursePaid;
-        totalDebt += courseDebt;
-        potentialRevenue += coursePotentail;
-
-        return {
-            course,
-            readinessPercent,
-            enrolledStudents: studentsWithFinancials,
-            coursePaid,
-            courseDebt,
-            coursePotentail
-        };
-    });
-
-    const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
-    const [expandedStudentHistoryId, setExpandedStudentHistoryId] = useState<string | null>(null);
+const EmployeeAccordionItem: React.FC<{
+  employee: Employee;
+  courses: Course[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onEdit: (employee: Employee) => void;
+  onDelete: (id: string) => void;
+}> = ({ employee, courses, isExpanded, onToggle, onEdit, onDelete }) => {
+    const today = new Date().toISOString().split('T')[0];
+    const upcomingCourses = courses.filter(c => c.teacherId === employee.id && c.startDate >= today);
+    const pastCourses = courses.filter(c => c.teacherId === employee.id && c.startDate < today);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-800 p-8 rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
-                {/* Header */}
-                <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-700 border-2 border-cyan-500">
-                            {employee.avatar ? <img src={employee.avatar} alt={employee.name} className="w-full h-full object-cover" /> : <EmployeeIcon className="w-full h-full p-4 text-gray-400" />}
-                        </div>
-                        <div>
-                            <h2 className="text-3xl font-bold text-white">{employee.name}</h2>
-                            <p className="text-cyan-400 font-medium">{employee.role}</p>
-                            <div className="text-sm text-gray-400 mt-1 flex gap-4">
-                                <span>{employee.email}</span>
-                                <span>{employee.phone}</span>
-                            </div>
-                        </div>
+        <div className="bg-gray-800 rounded-lg">
+            <div className="flex items-center p-4 cursor-pointer hover:bg-gray-700/50" onClick={onToggle}>
+                {employee.avatar ? (
+                    <img src={employee.avatar} alt={employee.name} className="w-10 h-10 rounded-full object-cover" />
+                ) : (
+                    <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
+                        <UserIcon className="w-6 h-6 text-gray-500"/>
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" onClick={onEditEmployee}>Edit Profile</Button>
-                        <button onClick={onClose} className="text-gray-400 hover:text-white text-xl p-2">&times;</button>
-                    </div>
+                )}
+                <div className="flex-1 ml-4">
+                    <p className="font-bold text-white">{employee.name}</p>
+                    <p className="text-sm text-gray-400">{employee.role}</p>
                 </div>
-
-                {/* Financial Overview Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600">
-                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Total Paid (Actual)</p>
-                        <p className="text-2xl font-bold text-green-400">{formatCurrency(totalPaid, currency)}</p>
-                        <p className="text-xs text-gray-500">({formatCurrency(totalPaid, currency === 'USD' ? 'TRY' : 'USD')})</p>
-                    </div>
-                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600">
-                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Total Debt</p>
-                        <p className="text-2xl font-bold text-red-400">{formatCurrency(totalDebt, currency)}</p>
-                        <p className="text-xs text-gray-500">({formatCurrency(totalDebt, currency === 'USD' ? 'TRY' : 'USD')})</p>
-                    </div>
-                    <div className="bg-gray-700/50 p-4 rounded-xl border border-gray-600 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-2 opacity-10"><CourseIcon className="w-12 h-12" /></div>
-                        <p className="text-xs text-gray-400 uppercase font-bold mb-1">Potential Revenue</p>
-                        <p className="text-2xl font-bold text-indigo-400">{formatCurrency(potentialRevenue, currency)}</p>
-                        <div className="w-full bg-gray-600 h-1 mt-2 rounded-full overflow-hidden">
-                            <div className="bg-indigo-500 h-full" style={{ width: `${potentialRevenue > 0 ? (totalPaid / potentialRevenue) * 100 : 0}%` }}></div>
-                        </div>
-                        <p className="text-[10px] text-indigo-300 mt-1 text-right">
-                            {potentialRevenue > 0 ? ((totalPaid / potentialRevenue) * 100).toFixed(0) : 0}% Collected
-                        </p>
-                    </div>
-                </div>
-
-                {/* Course List */}
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                    Active Courses <span className="text-sm font-normal text-gray-400 bg-gray-700 px-2 py-0.5 rounded-full">{courseDetails.length}</span>
-                </h3>
-                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-                    {courseDetails.length > 0 ? courseDetails.map(({ course, readinessPercent, enrolledStudents, coursePaid, courseDebt }) => (
-                        <div key={course.id} className="bg-gray-700 rounded-lg overflow-hidden border border-gray-600">
-                            {/* Course Header */}
-                            <div
-                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-600/50 transition-colors"
-                                onClick={() => setExpandedCourseId(expandedCourseId === course.id ? null : course.id)}
-                            >
-                                <div className="flex items-center gap-4 flex-1">
-                                    <div className={`p-2 rounded-lg ${readinessPercent === 100 ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-400'}`}>
-                                        <CourseIcon className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-lg">{course.name}</h4>
-                                        <p className="text-sm text-gray-400">{course.startDate} | {course.duration}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-8 mr-4">
-                                    {/* Readiness Bar */}
-                                    {readinessPercent !== undefined && (
-                                        <div className="w-32">
-                                            <div className="flex justify-between text-xs mb-1">
-                                                <span className="text-gray-400">Readiness</span>
-                                                <span className={`${readinessPercent === 100 ? 'text-green-400' : 'text-yellow-400'}`}>{readinessPercent}%</span>
-                                            </div>
-                                            <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full transition-all duration-500 ${readinessPercent === 100 ? 'bg-green-500' : 'bg-yellow-500'}`}
-                                                    style={{ width: `${readinessPercent}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="text-right min-w-[100px]">
-                                        <p className="text-xs text-gray-400">Debt</p>
-                                        <p className={`font-bold ${courseDebt > 0 ? 'text-red-400' : 'text-gray-500'}`}>{formatCurrency(courseDebt, currency)}</p>
-                                    </div>
-                                    <div className="text-right min-w-[100px]">
-                                        <p className="text-xs text-gray-400">Paid</p>
-                                        <p className="font-bold text-green-400">{formatCurrency(coursePaid, currency)}</p>
-                                    </div>
-                                </div>
-                                <div className="text-gray-500">
-                                    {expandedCourseId === course.id ? '▲' : '▼'}
-                                </div>
-                            </div>
-
-                            {/* Expanded Students List */}
-                            {expandedCourseId === course.id && (
-                                <div className="bg-gray-800/50 p-4 border-t border-gray-600 inset-shadow-md">
-                                    <h5 className="text-sm font-bold text-gray-400 uppercase mb-3 ml-1">Enrolled Students ({enrolledStudents.length})</h5>
-                                    {enrolledStudents.length > 0 ? (
-                                        <div className="grid grid-cols-1 gap-2">
-                                            {enrolledStudents.map(({ student, data }) => (
-                                                <div key={student.id} className="bg-gray-700/50 rounded overflow-hidden">
-                                                    <div
-                                                        className="flex justify-between items-center p-2 hover:bg-gray-700 transition-colors cursor-pointer"
-                                                        onClick={() => setExpandedStudentHistoryId(expandedStudentHistoryId === student.id ? null : student.id)}
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-600">
-                                                                {student.avatar ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-1 text-gray-400" />}
-                                                            </div>
-                                                            <span className="text-sm font-medium">{student.name}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-4 text-sm">
-                                                            <span className={`${data.priceDue > 0 ? 'text-red-400' : 'text-green-500'} font-mono`}>
-                                                                {data.priceDue > 0 ? `Debt: ${formatCurrency(data.priceDue, currency)}` : 'Paid'}
-                                                            </span>
-                                                            <span className="text-xs text-gray-500">{expandedStudentHistoryId === student.id ? 'Hide History' : 'Show History'}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Payment History Sub-expansion */}
-                                                    {expandedStudentHistoryId === student.id && (
-                                                        <div className="bg-gray-900/30 p-2 pl-12 text-xs border-t border-gray-700">
-                                                            <p className="font-bold text-gray-400 mb-1 uppercase text-[10px]">Transaction History</p>
-                                                            {data.paymentHistory && data.paymentHistory.length > 0 ? (
-                                                                <div className="space-y-1">
-                                                                    {data.paymentHistory.map((ph, idx) => (
-                                                                        <div key={idx} className="flex justify-between text-gray-300">
-                                                                            <span>{ph.date}</span>
-                                                                            <span>{ph.method}</span>
-                                                                            <span className="text-green-400 font-mono">{formatCurrency(ph.amount, currency)}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-gray-500 italic">No payments recorded.</span>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500 italic ml-1">No students enrolled.</p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )) : (
-                        <div className="text-center py-10 text-gray-500">
-                            <p>This employee is not teaching any active courses.</p>
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex justify-end pt-6 mt-4 border-t border-gray-700">
-                    <Button variant="secondary" onClick={onClose}>Close</Button>
-                </div>
+                <p className="text-indigo-400 font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(employee.salary)} / month</p>
+                <ChevronDownIcon className={`w-6 h-6 ml-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </div>
+            {isExpanded && (
+                <div className="p-6 border-t border-gray-700 space-y-4">
+                    <p className="text-sm text-gray-300">{employee.biography}</p>
+                    <div>
+                        <h4 className="font-semibold">Upcoming Courses ({upcomingCourses.length})</h4>
+                         {upcomingCourses.length > 0 ? (
+                            <ul className="list-disc list-inside text-sm text-gray-400">
+                                {upcomingCourses.map(c => <li key={c.id}>{c.name} ({c.startDate})</li>)}
+                            </ul>
+                        ) : <p className="text-sm text-gray-500 italic">No upcoming courses.</p>}
+                    </div>
+                     <div>
+                        <h4 className="font-semibold">Past Courses ({pastCourses.length})</h4>
+                        {pastCourses.length > 0 ? (
+                             <ul className="list-disc list-inside text-sm text-gray-400">
+                                {pastCourses.map(c => <li key={c.id}>{c.name}</li>)}
+                            </ul>
+                        ): <p className="text-sm text-gray-500 italic">No past courses.</p>}
+                    </div>
+                    <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+                        <Button variant="secondary" onClick={() => onEdit(employee)}>Edit</Button>
+                        <Button variant="danger" onClick={() => onDelete(employee.id)}>Delete</Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
+
+const CourseAccordionItem: React.FC<{
+  course: Course;
+  students: Student[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  onEdit: (course: Course) => void;
+  onDelete: (id: string, name: string) => void;
+  currency: Currency;
+}> = ({ course, students, isExpanded, onToggle, onEdit, onDelete, currency }) => {
+    const enrolledStudents = useMemo(() => {
+        return students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id));
+    }, [students, course.id]);
+
+    return (
+        <div className="bg-gray-800 rounded-lg">
+            <div className="flex items-center p-4 cursor-pointer hover:bg-gray-700/50" onClick={onToggle}>
+                <div className="flex-1">
+                    <p className="font-bold text-white">{course.name}</p>
+                    <p className="text-sm text-gray-400">{course.teacherName} | {course.startDate}</p>
+                </div>
+                <div className="text-sm text-gray-300 mr-4">{enrolledStudents.length} {enrolledStudents.length === 1 ? 'student' : 'students'}</div>
+                <ChevronDownIcon className={`w-6 h-6 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            </div>
+            {isExpanded && (
+                <div className="p-6 border-t border-gray-700">
+                    <h4 className="font-semibold mb-3">Enrolled Students & Payments</h4>
+                     {enrolledStudents.length > 0 ? (
+                        <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
+                            {enrolledStudents.map(student => {
+                                const enrollmentDetails = student.enrolledCourses.find(ec => ec.courseId === course.id);
+                                if (!enrollmentDetails) return null;
+                                return (
+                                    <div key={student.id} className="bg-gray-700/50 p-3 rounded">
+                                        <p className="font-semibold text-white">{student.name}</p>
+                                        <div className="text-xs text-gray-400">
+                                            Total Paid: <span className="text-green-400">{formatCurrency(Number(enrollmentDetails.pricePaid), currency)}</span> | 
+                                            Due: <span className="text-red-400">{formatCurrency(Number(enrollmentDetails.priceDue), currency)}</span>
+                                        </div>
+                                         {enrollmentDetails.paymentHistory.length > 0 && (
+                                            <ul className="text-xs list-disc list-inside pl-2 mt-1">
+                                                {enrollmentDetails.paymentHistory.map(p => (
+                                                    <li key={p.id}>{p.date}: {formatCurrency(Number(p.amount), currency)} ({p.method})</li>
+                                                ))}
+                                            </ul>
+                                         )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-gray-500 italic">No students enrolled.</p>
+                    )}
+                    <div className="flex justify-end space-x-3 pt-4 mt-4 border-t border-gray-700">
+                        <Button variant="secondary" onClick={() => onEdit(course)}>Edit</Button>
+                        <Button variant="danger" onClick={() => onDelete(course.id, course.name)}>Delete</Button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
 const Training: React.FC<{ currency: Currency }> = ({ currency }) => {
-    const [activeTab, setActiveTab] = useState<Tab>('students');
-    const [students, setStudents] = useState<Student[]>([]);
-    const [employees, setEmployees] = useState<Employee[]>([]);
-    const [courses, setCourses] = useState<Course[]>([]);
-    const [courseTemplates, setCourseTemplates] = useState<CourseTemplate[]>([]);
-    const [coursePreparations, setCoursePreparations] = useState<CoursePreparation[]>([]);
-    // const [currency, setCurrency] = useState<Currency>('TRY'); // Removed local state // DEFAULT CURRENCY CHANGED TO TRY
-    const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState<'student' | 'employee' | 'employeeDetails' | 'course' | 'courseStudents' | 'payment' | null>(null);
-    const [selectedItem, setSelectedItem] = useState<any>(null); // Type could be Student | Employee | Course
-    const [paymentData, setPaymentData] = useState<{ student: Student, course: EnrolledCourse, initialPayment?: PaymentHistory } | null>(null);
-    const [filterText, setFilterText] = useState('');
-    const [courseFilter, setCourseFilter] = useState<'upcoming' | 'past'>('upcoming');
-    // ... load data useEffect ... (unchanged)
+  // Data states
+  const [students, setStudents] = useState<Student[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [courseTemplates, setCourseTemplates] = useState<CourseTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
 
-    // ... handle delete/save student/employee/course ... (unchanged)
+  // UI states
+  const [activeTab, setActiveTab] = useState<Tab>('students');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [studentStatusFilter, setStudentStatusFilter] = useState('All');
+  const [courseDateFilter, setCourseDateFilter] = useState({ from: '', to: '' });
+  const [courseViewMode, setCourseViewMode] = useState<'upcoming' | 'past' | 'all'>('upcoming'); // Default to upcoming
+  
+  // Modal states
+  const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [noteForStudentId, setNoteForStudentId] = useState<string | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState<{ student: Student; enrolledCourse: EnrolledCourse } | null>(null);
+  const [isCourseTemplateModalOpen, setIsCourseTemplateModalOpen] = useState(false);
 
-    const handleSavePayment = async (amount: number, date: string, method: string, paymentId?: string) => {
-        if (!paymentData) return;
-        const { student, course } = paymentData;
+  // Drag and Drop refs
+  const dragEmployeeId = useRef<string | null>(null);
+  const dragOverEmployeeId = useRef<string | null>(null);
 
+
+  const fetchInitialData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [studentsData, coursesData, employeesData, templatesData] = await Promise.all([
+        firestoreService.getStudents(),
+        firestoreService.getCourses(),
+        firestoreService.getEmployees(),
+        firestoreService.getCourseTemplates(),
+      ]);
+      setStudents(studentsData);
+      setCourses(coursesData);
+      setEmployees(employeesData);
+      setCourseTemplates(templatesData.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      console.error("Failed to fetch initial data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  // Handlers for Modals
+  const openAddEditStudentModal = (student: Student | null) => { setEditingStudent(student); setIsStudentModalOpen(true); };
+  const openAddEditEmployeeModal = (employee: Employee | null) => { setEditingEmployee(employee); setIsEmployeeModalOpen(true); };
+  const openAddEditCourseModal = (course: Course | null) => { setEditingCourse(course); setIsCourseModalOpen(true); };
+  const openNoteModal = (studentId: string) => { setNoteForStudentId(studentId); setIsNoteModalOpen(true); };
+  const openPaymentModal = (student: Student, enrolledCourse: EnrolledCourse) => { setPaymentDetails({ student, enrolledCourse }); setIsPaymentModalOpen(true); };
+
+  // Save Handlers
+  const handleSaveStudent = async (studentData: Student | Omit<Student, 'id'>) => {
+    if ('id' in studentData) {
+      await firestoreService.updateStudent(studentData.id, studentData);
+    } else {
+      await firestoreService.addStudent(studentData);
+    }
+    await fetchInitialData();
+    setIsStudentModalOpen(false);
+  };
+  
+  const handleSaveEmployee = async (employeeData: Employee | Omit<Employee, 'id'>) => {
+    if ('id' in employeeData) {
+      await firestoreService.updateEmployee(employeeData.id, employeeData);
+    } else {
+      const newEmployeeData = { ...employeeData, order: employees.length };
+      await firestoreService.addEmployee(newEmployeeData);
+    }
+    await fetchInitialData();
+    setIsEmployeeModalOpen(false);
+  };
+  
+  const handleSaveCourse = async (courseData: Course | Omit<Course, 'id'>) => {
+    if ('id' in courseData) {
+      await firestoreService.updateCourse(courseData.id, courseData);
+    } else {
+      await firestoreService.addCourse(courseData);
+    }
+    await fetchInitialData();
+    setIsCourseModalOpen(false);
+  };
+
+  const handleSaveNote = async (studentId: string, content: string) => {
+    await firestoreService.addNoteToStudent(studentId, content);
+    await fetchInitialData();
+    setIsNoteModalOpen(false);
+  };
+
+  const handleAddPayment = async (studentId: string, courseIdentifier: string, payment: Omit<PaymentHistory, 'id'>) => {
+    await firestoreService.addPaymentToStudent(studentId, courseIdentifier, payment);
+    await fetchInitialData();
+    setIsPaymentModalOpen(false);
+  };
+  
+  // Delete Handlers
+  const handleDeleteStudent = async (id: string) => {
+    if (window.confirm("Are you sure?")) {
+      await firestoreService.deleteStudent(id);
+      await fetchInitialData();
+    }
+  };
+  
+  const handleDeleteEmployee = async (id: string) => {
+    if (window.confirm("Are you sure?")) {
+      await firestoreService.deleteEmployee(id);
+      await fetchInitialData();
+    }
+  };
+  
+  const handleDeleteCourse = async (courseId: string, courseName: string) => {
+    if (window.confirm(`Are you sure you want to delete the course "${courseName}"? This will also un-enroll all students from it.`)) {
         try {
-            // Update the specific enrolled course
-            const updatedEnrolledCourses = await Promise.all(student.enrolledCourses.map(async ec => {
-                if (ec.courseId !== course.courseId) return ec;
-
-                let newPricePaid = ec.pricePaid;
-                let updatedHistory = [...(ec.paymentHistory || [])];
-
-                if (paymentId) {
-                    // EDIT MODE
-                    const oldPayment = ec.paymentHistory.find(p => p.id === paymentId);
-                    const oldAmount = oldPayment ? oldPayment.amount : 0;
-
-                    // Adjust total paid
-                    newPricePaid = newPricePaid - oldAmount + amount;
-
-                    // Sync with Finance (Income)
-                    let currentIncomeId = oldPayment?.incomeId;
-                    if (currentIncomeId) {
-                        await firestoreService.updateIncome(currentIncomeId, {
-                            date,
-                            amount,
-                            description: `Payment from ${student.name} for course '${ec.courseName}'`
-                        });
-                    } else {
-                        // If for some reason incomeId is missing, create new (optional safety net)
-                        const incomeResult = await firestoreService.addIncome({
-                            date,
-                            amount,
-                            description: `Payment from ${student.name} for course '${ec.courseName}'`
-                        });
-                        currentIncomeId = incomeResult.id;
-                    }
-
-                    // Update local history item
-                    updatedHistory = updatedHistory.map(p =>
-                        p.id === paymentId ? { ...p, amount, date, method, incomeId: currentIncomeId } : p
-                    );
-
-                } else {
-                    // ADD MODE
-                    newPricePaid = newPricePaid + amount;
-
-                    // Sync with Finance (Income)
-                    const incomeResult = await firestoreService.addIncome({
-                        date,
-                        amount,
-                        description: `Payment from ${student.name} for course '${ec.courseName}'`
-                    });
-
-                    // Add new payment to history
-                    updatedHistory.push({
-                        id: Date.now().toString(),
-                        date,
-                        amount,
-                        method,
-                        courseName: ec.courseName,
-                        incomeId: incomeResult.id
-                    });
-                }
-
-                // Recalculate Due
-                const newPriceDue = Math.max(0, ec.price - newPricePaid);
-
-                return {
-                    ...ec,
-                    pricePaid: newPricePaid,
-                    priceDue: newPriceDue,
-                    paymentStatus: (newPriceDue === 0 ? 'Paid' : 'Pending') as 'Paid' | 'Pending',
-                    paymentHistory: updatedHistory
-                };
-            }));
-
-            const updatedStudent = { ...student, enrolledCourses: updatedEnrolledCourses };
-            setStudents(prev => prev.map(s => s.id === student.id ? updatedStudent as Student : s));
-
-            // Persist to Firestore
-            await firestoreService.updateStudent(student.id, { enrolledCourses: updatedEnrolledCourses });
-
-            setShowModal('courseStudents');
-            setPaymentData(null);
+            setLoading(true);
+            const studentsToUpdate = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === courseId));
+            
+            const updatePromises = studentsToUpdate.map(student => {
+                const updatedCourses = student.enrolledCourses.filter(ec => ec.courseId !== courseId);
+                return firestoreService.updateStudent(student.id, { enrolledCourses: updatedCourses });
+            });
+            
+            await Promise.all(updatePromises);
+            await firestoreService.deleteCourse(courseId);
+            
+            alert(`Course "${courseName}" and all related enrollments have been deleted.`);
+            await fetchInitialData();
         } catch (error) {
-            console.error("Failed to save payment:", error);
-            alert("Failed to save payment.");
-        }
-    };
-
-
-    // Load data
-    useEffect(() => {
-        setLoading(true);
-        Promise.all([
-            firestoreService.getStudents(),
-            firestoreService.getEmployees(),
-            firestoreService.getCourses(),
-            firestoreService.getCourseTemplates(),
-            firestoreService.getCoursePreparations()
-        ]).then(([s, e, c, ct, cp]) => {
-            setStudents(s);
-            setEmployees(e);
-            setCourses(c);
-            setCourseTemplates(ct);
-            setCoursePreparations(cp);
+            console.error("Error deleting course:", error);
+            alert("Failed to delete the course. Please check the console for details.");
+        } finally {
             setLoading(false);
-        }).catch(err => {
-            console.error("Failed to load data:", err);
-            setLoading(false);
-        });
-    }, []);
-
-    // Filter Logic
-    const filteredStudents = useMemo(() => students.filter(s => s.name?.toLowerCase().includes(filterText.toLowerCase())), [students, filterText]);
-    const filteredEmployees = useMemo(() => employees.filter(e => e.name?.toLowerCase().includes(filterText.toLowerCase())), [employees, filterText]);
-    const filteredCourses = useMemo(() => {
-        return courses.filter(c => {
-            const matchesText = c.name?.toLowerCase().includes(filterText.toLowerCase());
-            const today = new Date().toISOString().split('T')[0];
-            const isActive = c.startDate >= today;
-            const matchesFilter = courseFilter === 'upcoming' ? isActive : !isActive;
-            return matchesText && matchesFilter;
-        });
-    }, [courses, filterText, courseFilter]);
-
-    // Handlers
-    const handleDelete = async (type: Tab, id: string) => {
-        if (!window.confirm("Are you sure?")) return;
-        try {
-            if (type === 'students') {
-                await firestoreService.deleteStudent(id);
-                setStudents(prev => prev.filter(s => s.id !== id));
-            } else if (type === 'employees') {
-                await firestoreService.deleteEmployee(id);
-                setEmployees(prev => prev.filter(e => e.id !== id));
-            } else if (type === 'courses') {
-                await firestoreService.deleteCourse(id);
-                setCourses(prev => prev.filter(c => c.id !== id));
-            }
-        } catch (error) {
-            console.error("Delete failed:", error);
         }
-    };
+    }
+  };
 
-    const handleSaveStudent = async (data: Student | Omit<Student, 'id'>) => {
-        try {
-            if ('id' in data) {
-                await firestoreService.updateStudent(data.id, data);
-                setStudents(prev => prev.map(s => s.id === data.id ? data as Student : s));
-            } else {
-                const result = await firestoreService.addStudent(data as Omit<Student, 'id'>);
-                if (result.success && result.id) {
-                    setStudents(prev => [...prev, { ...data, id: result.id! } as Student]);
-                } else {
-                    console.error("Failed to add student:", result.message);
-                }
-            }
-            setShowModal(null);
-        } catch (error) { console.error("Save failed:", error); }
-    };
+  // Drag and Drop Handlers for Employees
+  const handleEmployeeDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    dragEmployeeId.current = id;
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  
+  const handleEmployeeDragEnter = (e: React.DragEvent<HTMLDivElement>, id: string) => {
+    dragOverEmployeeId.current = id;
+  };
+  
+  const handleEmployeeDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!dragEmployeeId.current || !dragOverEmployeeId.current || dragEmployeeId.current === dragOverEmployeeId.current) {
+        return;
+    }
+    const originalEmployees = [...employees];
+    const dragIndex = originalEmployees.findIndex(emp => emp.id === dragEmployeeId.current);
+    const hoverIndex = originalEmployees.findIndex(emp => emp.id === dragOverEmployeeId.current);
 
-    const handleSaveEmployee = async (data: Employee | Omit<Employee, 'id'>) => {
-        try {
-            if ('id' in data) {
-                await firestoreService.updateEmployee(data.id, data);
-                setEmployees(prev => prev.map(e => e.id === data.id ? data as Employee : e));
-            } else {
-                const result = await firestoreService.addEmployee(data as Omit<Employee, 'id'>);
-                if (result.success && result.id) {
-                    setEmployees(prev => [...prev, { ...data, id: result.id! } as Employee]);
-                } else {
-                    console.error("Failed to add employee:", result.message);
-                }
-            }
-            setShowModal(null);
-        } catch (error) { console.error("Save failed:", error); }
-    };
+    if (dragIndex === -1 || hoverIndex === -1) { return; }
+    
+    const newEmployees = [...originalEmployees];
+    const [draggedItem] = newEmployees.splice(dragIndex, 1);
+    newEmployees.splice(hoverIndex, 0, draggedItem);
+    
+    setEmployees(newEmployees);
 
-    const handleSaveCourse = async (data: Course | Omit<Course, 'id'>) => {
-        try {
-            if ('id' in data) {
-                await firestoreService.updateCourse(data.id, data);
-                setCourses(prev => prev.map(c => c.id === data.id ? data as Course : c));
-            } else {
-                const result = await firestoreService.addCourse(data as Omit<Course, 'id'>);
-                if (result.success && result.id) {
-                    setCourses(prev => [...prev, { ...data, id: result.id! } as Course]);
-                } else {
-                    console.error("Failed to add course:", result.message);
-                }
-            }
-            setShowModal(null);
-        } catch (error) { console.error("Save failed:", error); }
-    };
+    try {
+        const orderedEmployeesToUpdate = newEmployees.map((emp, index) => ({
+            id: emp.id,
+            order: index,
+        }));
+        await firestoreService.updateEmployeesOrder(orderedEmployeesToUpdate);
+    } catch (error) {
+        console.error("Failed to update employee order:", error);
+        alert("Could not save the new order. Please try again.");
+        setEmployees(originalEmployees); // Revert on error
+    } finally {
+        dragEmployeeId.current = null;
+        dragOverEmployeeId.current = null;
+    }
+  };
+  
+  const handleEmployeeDragEnd = () => {
+    dragEmployeeId.current = null;
+    dragOverEmployeeId.current = null;
+  };
 
-    const handleGetStudentAdvice = async (student: Student) => {
-        const advice = await geminiService.getStudentAdvice(student);
-        alert(`AI Advice for ${student.name}:\n\n${advice}`);
-    };
+  const handleDateFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setCourseDateFilter(prev => ({ ...prev, [name]: value }));
+  };
 
-    const handleGetEmployeeAdvice = async (employee: Employee) => {
-        const advice = await geminiService.getEmployeeAdvice(employee);
-        alert(`AI Advice for ${employee.name}:\n\n${advice}`);
-    };
+  // Filtering Logic
+  const filteredStudents = useMemo(() => students
+    .filter(s => (studentStatusFilter === 'All' || s.status === studentStatusFilter))
+    .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())), [students, searchTerm, studentStatusFilter]);
 
-    const handleGetCourseAdvice = async (course: Course) => {
-        const advice = await geminiService.getCourseAdvice(course, students);
-        alert(`AI Advice for ${course.name}:\n\n${advice}`);
-    };
+  const filteredEmployees = useMemo(() => employees
+    .filter(e => e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.role.toLowerCase().includes(searchTerm.toLowerCase())), [employees, searchTerm]);
+    
+  const filteredCourses = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return courses
+    .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.teacherName.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(c => {
+        // View Mode Filter
+        if (courseViewMode === 'upcoming') return c.startDate >= today;
+        if (courseViewMode === 'past') return c.startDate < today;
+        return true;
+    })
+    .filter(c => {
+        // Date Range Filter
+        if (!courseDateFilter.from && !courseDateFilter.to) return true;
+        // Dates are stored as 'YYYY-MM-DD' strings, so direct string comparison works.
+        if (courseDateFilter.from && c.startDate < courseDateFilter.from) {
+            return false;
+        }
+        if (courseDateFilter.to && c.startDate > courseDateFilter.to) {
+            return false;
+        }
+        return true;
+    })
+    .sort((a, b) => {
+        // Sort logic: Past -> Descending (most recent first), Upcoming/All -> Ascending (nearest first)
+        if (courseViewMode === 'past') {
+            return b.startDate.localeCompare(a.startDate);
+        }
+        return a.startDate.localeCompare(b.startDate);
+    });
+  }, [courses, searchTerm, courseDateFilter, courseViewMode]);
 
 
-    if (loading) return <div className="p-10 text-center text-white">Loading...</div>;
-
+  const renderHeader = () => {
+    let title = ''; let description = ''; let buttonText = '';
+    switch (activeTab) {
+        case 'students':
+            title = 'Керування студентами'; description = 'Переглядайте, додавайте та редагуйте інформацію про студентів.'; buttonText = 'Додати нового студента'; break;
+        case 'employees':
+            title = 'Керування співробітниками'; description = 'Переглядайте, додавайте та редагуйте інформацію про співробітників.'; buttonText = 'Додати співробітника'; break;
+        case 'courses':
+            title = 'Керування курсами'; description = 'Переглядайте, додавайте та редагуйте інформацію про курси.'; buttonText = 'Додати новий курс'; break;
+    }
     return (
-        <div className="p-6 text-white min-h-screen">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">Training Center</h1>
-                <div className="flex gap-2">
-                    {['students', 'employees', 'courses'].map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab as Tab)}
-                            className={`px-4 py-2 rounded-lg capitalize transition-colors ${activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-                        >
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+        <div className="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 className="text-2xl font-bold text-white">{title}</h1>
+                <p className="text-sm text-gray-400">{description}</p>
             </div>
-
-            <div className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-lg shadow-md gap-4">
-                <input
-                    type="text"
-                    placeholder={`Search ${activeTab}...`}
-                    value={filterText}
-                    onChange={e => setFilterText(e.target.value)}
-                    className="bg-gray-700 text-white px-4 py-2 rounded-lg w-full max-w-md focus:ring-2 focus:ring-indigo-500 outline-none"
-                />
-
-                {/* NEW: Course Filters */}
-                {activeTab === 'courses' && (
-                    <div className="flex bg-gray-700 rounded-lg p-1">
-                        <button
-                            onClick={() => setCourseFilter('upcoming')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${courseFilter === 'upcoming' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            Active & Future
-                        </button>
-                        <button
-                            onClick={() => setCourseFilter('past')}
-                            className={`px-3 py-1.5 rounded-md text-sm transition-all ${courseFilter === 'past' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            Past
-                        </button>
-                    </div>
-                )}
-
-                <Button onClick={() => { setSelectedItem(null); setShowModal(activeTab === 'students' ? 'student' : activeTab === 'employees' ? 'employee' : 'course'); }}>
-                    + Add {activeTab === 'students' ? 'Student' : activeTab === 'employees' ? 'Employee' : 'Course'}
-                </Button>
+            <div className="flex gap-2">
+                 {activeTab === 'courses' && <Button variant="secondary" onClick={() => setIsCourseTemplateModalOpen(true)}>Керувати списком</Button>}
+                 <Button variant="primary" onClick={() => {
+                    if (activeTab === 'students') openAddEditStudentModal(null);
+                    if (activeTab === 'courses') openAddEditCourseModal(null);
+                    if (activeTab === 'employees') openAddEditEmployeeModal(null);
+                 }}>{buttonText}</Button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {activeTab === 'students' && filteredStudents.map(student => {
-                    // Calculate Debt
-                    const totalDebt = student.enrolledCourses.reduce((acc, c) => acc + c.priceDue, 0);
-                    return (
-                        <div key={student.id} className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700 hover:border-indigo-500 transition-all relative group">
-                            <div className="flex items-center space-x-4 mb-4">
-                                <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-700 border-2 border-indigo-500">
-                                    {student.avatar ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" /> : <UserIcon className="w-full h-full p-3 text-gray-400" />}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-xl">{student.name}</h3>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${student.status === 'Active' ? 'bg-green-900 text-green-300' : 'bg-gray-600'}`}>{student.status}</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2 text-sm text-gray-300 mb-4">
-                                <div className="flex items-center"><EmailIcon /><span className="ml-2">{student.email || 'No email'}</span></div>
-                                <div className="flex items-center"><PhoneIcon /><span className="ml-2">{student.phone || 'No phone'}</span></div>
-
-                                {/* Enrolled Courses List */}
-                                <div className="mt-3 pt-3 border-t border-gray-700">
-                                    <p className="text-xs font-bold text-gray-500 uppercase mb-1">Enrolled Courses:</p>
-                                    {student.enrolledCourses.length > 0 ? (
-                                        <ul className="space-y-1">
-                                            {student.enrolledCourses.map((ec, idx) => (
-                                                <li key={idx} className="flex justify-between text-xs">
-                                                    <span className="text-gray-200">{ec.courseName}</span>
-                                                    <span className={`${ec.paymentStatus === 'Paid' ? 'text-green-400' : 'text-yellow-400'}`}>
-                                                        {ec.paymentStatus}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-gray-600 italic">No active courses</p>
-                                    )}
-                                </div>
-
-                                {totalDebt > 0 && (
-                                    <div className="mt-3 bg-red-900/20 p-2 rounded border border-red-900/50">
-                                        <div className="text-red-400 font-bold text-sm">Debt: {formatCurrency(totalDebt, 'USD')}</div>
-                                        <div className="text-red-500/70 text-xs">({formatCurrency(totalDebt, 'TRY')})</div>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex justify-between mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => { setSelectedItem(student); setShowModal('student'); }} className="p-2 bg-gray-700 rounded-full hover:bg-indigo-600"><EditIcon /></button>
-                                <button onClick={() => handleGetStudentAdvice(student)} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-bold hover:shadow-lg">AI Advice</button>
-                                <button onClick={() => handleDelete('students', student.id)} className="p-2 bg-gray-700 rounded-full hover:bg-red-600"><TrashIcon /></button>
-                            </div>
-                        </div>
-                    )
-                })}
-
-                {activeTab === 'employees' && filteredEmployees.map(employee => (
-                    <div key={employee.id} className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700 hover:border-cyan-500 transition-all relative group">
-                        <div className="flex items-center space-x-4 mb-4">
-                            <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-700 border-2 border-cyan-500">
-                                {employee.avatar ? <img src={employee.avatar} alt={employee.name} className="w-full h-full object-cover" /> : <EmployeeIcon className="w-full h-full p-3 text-gray-400" />}
-                            </div>
-                            <div>
-                                <h3 className="font-bold text-xl">{employee.name}</h3>
-                                <p className="text-sm text-cyan-400">{employee.role}</p>
-                            </div>
-                        </div>
-                        <div className="text-sm text-gray-400 mb-4">
-                            <p>Specializations: {employee.specializations.join(', ')}</p>
-                            <p className="mt-2 text-gray-500 line-clamp-3 italic">{employee.biography}</p>
-                        </div>
-                        <div className="flex justify-between mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => { setSelectedItem(employee); setShowModal('employeeDetails'); }} className="px-3 py-1 bg-cyan-600 rounded-full text-xs font-bold hover:bg-cyan-500 shadow-lg flex items-center gap-1">
-                                <CourseIcon className="w-3 h-3" /> View Details
-                            </button>
-                            <button onClick={() => handleGetEmployeeAdvice(employee)} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-bold hover:shadow-lg">AI Advice</button>
-                            <button onClick={() => handleDelete('employees', employee.id)} className="p-2 bg-gray-700 rounded-full hover:bg-red-600"><TrashIcon /></button>
-                        </div>
-                    </div>
-                ))}
-
-                {activeTab === 'courses' && filteredCourses.map(course => {
-                    const enrolledCount = students.filter(s => s.enrolledCourses.some(ec => ec.courseId === course.id)).length;
-                    return (
-                        <div key={course.id} className="bg-gray-800 rounded-xl p-6 shadow-lg border border-gray-700 hover:border-purple-500 transition-all relative group">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="p-3 bg-purple-900 rounded-lg"><CourseIcon className="text-purple-300" /></div>
-                                <span className="text-xl font-bold text-green-400">{formatCurrency(course.price, currency)}</span>
-                            </div>
-                            <h3 className="font-bold text-xl mb-2">{course.name}</h3>
-                            <p className="text-sm text-gray-400 mb-2">{course.teacherName} | {course.startDate}</p>
-
-                            {/* Enrolled Students Widget */}
-                            <div
-                                onClick={() => { setSelectedItem(course); setShowModal('courseStudents'); }}
-                                className="flex items-center gap-2 mb-4 bg-gray-700/50 p-2 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
-                            >
-                                <UserIcon className="w-4 h-4 text-indigo-400" />
-                                <span className="text-sm text-gray-200 font-medium">Enrolled: {enrolledCount}</span>
-                                <span className="text-xs text-gray-500 ml-auto bg-gray-800 px-2 py-0.5 rounded">View List</span>
-                            </div>
-
-                            <p className="text-xs text-gray-500 line-clamp-2 mb-4">{course.description}</p>
-                            <div className="flex justify-between mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => { setSelectedItem(course); setShowModal('course'); }} className="p-2 bg-gray-700 rounded-full hover:bg-indigo-600"><EditIcon /></button>
-                                <button onClick={() => handleGetCourseAdvice(course)} className="px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-bold hover:shadow-lg">AI Advice</button>
-                                <button onClick={() => handleDelete('courses', course.id)} className="p-2 bg-gray-700 rounded-full hover:bg-red-600"><TrashIcon /></button>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            {showModal === 'student' && <AddEditStudentModal student={selectedItem} courses={courses} onClose={() => setShowModal(null)} onSave={handleSaveStudent} currency={currency} />}
-            {showModal === 'employee' && <AddEditEmployeeModal employee={selectedItem} onClose={() => setShowModal(null)} onSave={handleSaveEmployee} />}
-            {showModal === 'employeeDetails' && (
-                <EmployeeDetailsModal
-                    employee={selectedItem}
-                    courses={courses}
-                    students={students}
-                    coursePreparations={coursePreparations}
-                    onClose={() => setShowModal(null)}
-                    onEditEmployee={() => { setSelectedItem(selectedItem); setShowModal('employee'); }}
-                    currency={currency}
-                />
-            )}
-            {showModal === 'course' && <CourseModal course={selectedItem} employees={employees} courseTemplates={courseTemplates} onClose={() => setShowModal(null)} onSave={handleSaveCourse} />}
-
-            {showModal === 'courseStudents' && (
-                <CourseStudentsModal
-                    course={selectedItem}
-                    students={students}
-                    onClose={() => setShowModal(null)}
-                    onPay={(student, course, payment) => {
-                        setPaymentData({ student, course, initialPayment: payment });
-                        setShowModal('payment');
-                    }}
-                    currency={currency}
-                />
-            )}
-
-            {showModal === 'payment' && paymentData && (
-                <PaymentModal
-                    student={paymentData.student}
-                    course={paymentData.course}
-                    initialPayment={paymentData.initialPayment}
-                    onClose={() => setShowModal('courseStudents')}
-                    onSave={handleSavePayment}
-                    currency={currency}
-                />
-            )}
         </div>
     );
+};
+
+  return (
+    <div className="flex flex-col h-full">
+      {isStudentModalOpen && <AddEditStudentModal student={editingStudent} courses={courses} onClose={() => setIsStudentModalOpen(false)} onSave={handleSaveStudent} currency={currency} />}
+      {isEmployeeModalOpen && <AddEditEmployeeModal employee={editingEmployee} onClose={() => setIsEmployeeModalOpen(false)} onSave={handleSaveEmployee} />}
+      {isCourseModalOpen && <CourseModal course={editingCourse} employees={employees} courseTemplates={courseTemplates} onClose={() => setIsCourseModalOpen(false)} onSave={handleSaveCourse} />}
+      {isNoteModalOpen && noteForStudentId && <NoteModal studentId={noteForStudentId} onClose={() => setIsNoteModalOpen(false)} onSave={handleSaveNote} />}
+      {isPaymentModalOpen && paymentDetails && <PaymentModal {...paymentDetails} onClose={() => setIsPaymentModalOpen(false)} onSave={handleAddPayment} currency={currency} />}
+      {isCourseTemplateModalOpen && <CourseTemplateModal templates={courseTemplates} onClose={async () => { setIsCourseTemplateModalOpen(false); await fetchInitialData(); }} onSave={async () => {}} />}
+      
+      <div className="shrink-0 space-y-4 p-1">
+          {renderHeader()}
+          <div className="flex border-b border-gray-700">
+            {(['students', 'employees', 'courses'] as Tab[]).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 text-sm font-medium capitalize ${activeTab === tab ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto mt-4 pr-2">
+        {loading ? <p className="text-center p-8">Loading data...</p> : (
+            <div>
+                {activeTab === 'students' && (
+                    <div className="space-y-4">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <input type="text" placeholder="Search by name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full sm:flex-1 bg-gray-700 p-2 rounded" />
+                            <select value={studentStatusFilter} onChange={e => setStudentStatusFilter(e.target.value)} className="w-full sm:w-auto bg-gray-700 p-2 rounded">
+                                <option>All</option><option>Active</option><option>Pending</option><option>Graduated</option><option>Dropped</option>
+                            </select>
+                        </div>
+                        {filteredStudents.map(student => (
+                            <StudentAccordionItem key={student.id} student={student} isExpanded={expandedId === student.id} onToggle={() => setExpandedId(expandedId === student.id ? null : student.id)} onEdit={openAddEditStudentModal} onDelete={handleDeleteStudent} onAddNote={openNoteModal} onAddPayment={openPaymentModal} currency={currency} />
+                        ))}
+                    </div>
+                )}
+                {activeTab === 'employees' && (
+                    <div className="space-y-4">
+                        <input type="text" placeholder="Search by name or role..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="flex-1 bg-gray-700 p-2 rounded" />
+                         <div onDrop={handleEmployeeDrop} onDragOver={(e) => e.preventDefault()} className="space-y-4">
+                            {filteredEmployees.map(employee => (
+                                <div
+                                    key={employee.id}
+                                    draggable
+                                    onDragStart={e => handleEmployeeDragStart(e, employee.id)}
+                                    onDragEnter={e => handleEmployeeDragEnter(e, employee.id)}
+                                    onDragEnd={handleEmployeeDragEnd}
+                                    className="cursor-move"
+                                >
+                                    <EmployeeAccordionItem
+                                        employee={employee}
+                                        courses={courses}
+                                        isExpanded={expandedId === employee.id}
+                                        onToggle={() => setExpandedId(expandedId === employee.id ? null : employee.id)}
+                                        onEdit={openAddEditEmployeeModal}
+                                        onDelete={handleDeleteEmployee}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {activeTab === 'courses' && (
+                    <div className="space-y-4">
+                         <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center bg-gray-800 p-4 rounded-lg">
+                            <div className="flex bg-gray-700 rounded-lg p-1 shrink-0">
+                                <button 
+                                    onClick={() => setCourseViewMode('upcoming')}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${courseViewMode === 'upcoming' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    Future
+                                </button>
+                                <button 
+                                    onClick={() => setCourseViewMode('past')}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${courseViewMode === 'past' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    Last
+                                </button>
+                                 <button 
+                                    onClick={() => setCourseViewMode('all')}
+                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${courseViewMode === 'all' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    All
+                                </button>
+                            </div>
+
+                            <input 
+                                type="text" 
+                                placeholder="Search by name or teacher..." 
+                                value={searchTerm} 
+                                onChange={e => setSearchTerm(e.target.value)} 
+                                className="w-full xl:w-auto flex-1 bg-gray-700 p-2 rounded border border-gray-600 focus:border-indigo-500 focus:outline-none" 
+                            />
+                            
+                            <div className="flex items-center gap-2 text-sm text-gray-300 w-full xl:w-auto">
+                                <span className="whitespace-nowrap text-gray-400">Custom Date:</span>
+                                <input 
+                                    type="date" 
+                                    name="from"
+                                    value={courseDateFilter.from}
+                                    onChange={handleDateFilterChange}
+                                    className="bg-gray-700 p-2 rounded border border-gray-600 text-white w-full xl:w-36"
+                                    aria-label="Filter courses from date"
+                                />
+                                <span className="text-gray-500">-</span>
+                                <input 
+                                    type="date" 
+                                    name="to"
+                                    value={courseDateFilter.to}
+                                    onChange={handleDateFilterChange}
+                                    className="bg-gray-700 p-2 rounded border border-gray-600 text-white w-full xl:w-36"
+                                    aria-label="Filter courses to date"
+                                />
+                            </div>
+                        </div>
+                        {filteredCourses.length > 0 ? (
+                            filteredCourses.map(course => (
+                                <CourseAccordionItem key={course.id} course={course} students={students} isExpanded={expandedId === course.id} onToggle={() => setExpandedId(expandedId === course.id ? null : course.id)} onEdit={openAddEditCourseModal} onDelete={handleDeleteCourse} currency={currency}/>
+                            ))
+                        ) : (
+                            <div className="text-center py-8 text-gray-500 bg-gray-800 rounded-lg">
+                                No courses found for the selected criteria.
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default Training;
